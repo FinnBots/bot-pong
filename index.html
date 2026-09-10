@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Bot Pong</title>
+<style>
+  :root{
+    --accent:#f2a03d; --ink:#0d1017; --court:#111722; --line:#243247;
+    --paper:#e9edf4; --muted:#7d8aa0; --win:#5bd6a0; --lose:#ff6b6b;
+    --edge:#1b2431;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--ink); color:var(--paper);
+    font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif;
+    display:flex; flex-direction:column; min-height:100dvh;
+    overflow:hidden; user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  header,.facts,.controls,footer{flex:0 0 auto}
+  .stage{flex:1 1 auto; position:relative; min-height:0}
+
+  /* testbar — only shown when TEST_MODE */
+  #testbar{display:none; background:#3a2a00; color:#ffd479; text-align:center;
+    font-size:12px; padding:4px 8px; letter-spacing:.02em}
+  body.test #testbar{display:block}
+
+  header{display:flex; align-items:center; gap:10px; padding:10px 14px;
+    border-bottom:1px solid var(--edge)}
+  header img{width:30px;height:30px;border-radius:7px;background:var(--court);
+    border:1px solid var(--line)}
+  header .title{font-size:18px;font-weight:700;letter-spacing:.01em}
+  header .title b{color:var(--accent)}
+  header .spacer{flex:1}
+  header .who{font-size:12px;color:var(--muted)}
+
+  .facts{display:flex;gap:0;border-bottom:1px solid var(--edge);
+    background:var(--court)}
+  .facts div{flex:1;padding:7px 6px;text-align:center;
+    border-right:1px solid var(--edge)}
+  .facts div:last-child{border-right:0}
+  .facts .k{font-size:10px;color:var(--muted)}
+  .facts .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .facts .v.you{color:var(--accent)}
+
+  canvas{display:block;width:100%;height:100%}
+
+  .controls{padding:8px 14px;border-top:1px solid var(--edge);
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    font-size:12px;color:var(--muted);min-height:40px}
+  .controls kbd{background:var(--court);border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:var(--paper);font-family:inherit}
+  .touchonly{display:none}
+  @media (pointer:coarse){ .keyonly{display:none} .touchonly{display:inline} }
+
+  footer{display:flex;gap:0;border-top:1px solid var(--edge)}
+  footer a{flex:1;text-align:center;padding:10px 6px;color:var(--muted);
+    text-decoration:none;font-size:13px;border-right:1px solid var(--edge)}
+  footer a:last-child{border-right:0}
+  footer a:hover,footer a:focus{color:var(--accent);outline:none}
+  footer a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+  /* modal */
+  .modal{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;background:rgba(6,9,14,.86);padding:20px;z-index:5}
+  .modal[hidden]{display:none}
+  .card{background:var(--court);border:1px solid var(--line);border-radius:14px;
+    padding:22px 22px 20px;max-width:340px;width:100%;text-align:center}
+  .card h1{margin:0 0 4px;font-size:24px}
+  .card h1.you{color:var(--win)} .card h1.cpu{color:var(--lose)}
+  .card p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
+  .card .big{font-size:15px;color:var(--paper);margin-top:10px;
+    font-variant-numeric:tabular-nums}
+  .btn{margin-top:18px;display:inline-block;background:var(--accent);
+    color:#20160a;border:none;border-radius:10px;font-size:16px;font-weight:700;
+    padding:12px 26px;cursor:pointer;font-family:inherit;width:100%}
+  .btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+  .rules{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.6}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+  <div id="testbar">TEST MODE — no live surface</div>
+
+  <header>
+    <img id="pfp" alt="" src="https://arweave.net/_cPSCheRvzVBlZK7QwM-3nXtteMdBbUn-zJhbGRlMmo/106.png">
+    <div class="title">Bot <b>Pong</b></div>
+    <div class="spacer"></div>
+    <div class="who">You vs Cam</div>
+  </header>
+
+  <div class="facts">
+    <div><div class="k">You</div><div class="v you" id="scoreYou">0</div></div>
+    <div><div class="k">First to</div><div class="v" id="target">11</div></div>
+    <div><div class="k">Cam</div><div class="v" id="scoreCpu">0</div></div>
+  </div>
+
+  <div class="stage">
+    <canvas id="court"></canvas>
+    <div class="modal" id="modal">
+      <div class="card" id="card">
+        <h1 id="cardTitle">Bot Pong</h1>
+        <p id="cardText">Get the ball past Cam. First to 11 wins.</p>
+        <div class="rules">
+          Drag to move your paddle — the ball speeds up every rally.
+        </div>
+        <button class="btn" id="startBtn">Play</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="keyonly">Move: <kbd>↑</kbd> <kbd>↓</kbd> &nbsp;·&nbsp; Pause: <kbd>P</kbd></span>
+    <span class="touchonly">Drag anywhere on the court to move your paddle</span>
+  </div>
+
+  <footer>
+    <a href="https://magiceden.io/marketplace/finnbot" target="_blank" rel="noopener">Buy a Bot</a>
+    <a href="https://games.finnstergram.com" target="_blank" rel="noopener">More games</a>
+  </footer>
+
+<script>
+/* ---- Bot Pong — Free only, wallet-dead (no wallet code, no memo, no money path). ---- */
+const TEST_MODE = false;
+if (TEST_MODE) document.body.classList.add('test');
+
+/* ---- Tunables (data-driven: change a value, not the code) ---- */
+const CFG = {
+  winScore:    11,
+  paddleH:     0.18,   // fraction of court height
+  paddleW:     12,     // px
+  ballR:       13,     // px — the ball IS Bot #106 (Cam), sized to read clearly
+  ballSpeed0:  6.2,    // starting px/frame at 60fps-equiv
+  ballSpeedUp: 1.045,  // multiply on each paddle hit
+  ballSpeedMax:16,
+  cpuEase:     0.085,  // CPU tracking (lower = beatable)
+  cpuMiss:     0.10,   // CPU aim jitter (fraction of paddle height)
+  accent:      '#f2a03d',
+};
+
+const cv = document.getElementById('court');
+const ctx = cv.getContext('2d');
+const modal = document.getElementById('modal');
+const startBtn = document.getElementById('startBtn');
+const cardTitle = document.getElementById('cardTitle');
+const cardText = document.getElementById('cardText');
+const elYou = document.getElementById('scoreYou');
+const elCpu = document.getElementById('scoreCpu');
+document.getElementById('target').textContent = CFG.winScore;
+
+/* Cam #106 as the ball, with a filled-disc fallback if the image is blocked */
+const camImg = new Image();
+camImg.crossOrigin = 'anonymous';
+let camReady = false;
+camImg.onload = () => camReady = true;
+camImg.onerror = () => camReady = false;
+camImg.src = 'https://arweave.net/_cPSCheRvzVBlZK7QwM-3nXtteMdBbUn-zJhbGRlMmo/106.png';
+
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.max(200, r.width); H = Math.max(200, r.height);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+window.addEventListener('resize', resize);
+
+/* ---- State ---- */
+const G = {
+  state: 'ready',            // 'ready' | 'playing' | 'paused' | 'over'
+  you: 0, cpu: 0,
+  py: 0, cy: 0,              // paddle centres (px)
+  bx: 0, by: 0, vx: 0, vy: 0,
+  reduced: matchMedia('(prefers-reduced-motion:reduce)').matches,
+};
+
+function paddlePx(){ return H * CFG.paddleH; }
+
+function serve(dir){
+  G.bx = W/2; G.by = H/2;
+  const ang = (Math.random()*0.5 - 0.25); // shallow angle
+  const sp = CFG.ballSpeed0;
+  G.vx = dir * sp * Math.cos(ang);
+  G.vy = sp * Math.sin(ang) * (Math.random()<0.5?1:-1);
+}
+
+function newGame(){
+  resize();
+  G.you = 0; G.cpu = 0;
+  G.py = H/2; G.cy = H/2;
+  updateScore();
+  serve(Math.random()<0.5 ? -1 : 1);
+  G.state = 'playing';
+  modal.hidden = true;
+}
+
+function updateScore(){ elYou.textContent = G.you; elCpu.textContent = G.cpu; }
+
+function point(who){
+  if (who === 'you') G.you++; else G.cpu++;
+  updateScore();
+  if (G.you >= CFG.winScore || G.cpu >= CFG.winScore){ return endGame(); }
+  G.py = clamp(G.py, paddlePx()/2, H - paddlePx()/2);
+  serve(who === 'you' ? -1 : 1); // serve toward the loser
+}
+
+function endGame(){
+  G.state = 'over';
+  const win = G.you > G.cpu;
+  cardTitle.textContent = win ? 'You win!' : 'Cam wins';
+  cardTitle.className = win ? 'you' : 'cpu';
+  cardText.innerHTML = 'Final <span class="big">'+G.you+' — '+G.cpu+'</span>';
+  document.querySelector('.rules').textContent = win
+    ? 'Nice rallies. Go again?'
+    : 'Cam got the better of that one. Rematch?';
+  startBtn.textContent = 'Play again';
+  modal.hidden = false;
+}
+
+const clamp = (v,a,b)=> v<a?a : v>b?b : v;
+
+/* ---- Physics step (fixed timestep) ---- */
+function step(){
+  const ph = paddlePx();
+  // CPU: ease toward ball with a little jitter, only when ball approaches it
+  const aim = G.by + (G.reduced ? 0 : (Math.sin(G.bx*0.01) * ph * CFG.cpuMiss));
+  G.cy += (aim - G.cy) * CFG.cpuEase;
+  G.cy = clamp(G.cy, ph/2, H - ph/2);
+
+  // move ball
+  G.bx += G.vx; G.by += G.vy;
+
+  // top/bottom walls
+  if (G.by < CFG.ballR){ G.by = CFG.ballR; G.vy = Math.abs(G.vy); }
+  if (G.by > H - CFG.ballR){ G.by = H - CFG.ballR; G.vy = -Math.abs(G.vy); }
+
+  const px = 18, cx = W - 18; // paddle x positions
+  // player paddle (left)
+  if (G.vx < 0 && G.bx - CFG.ballR < px + CFG.paddleW &&
+      G.bx > px && Math.abs(G.by - G.py) < ph/2 + CFG.ballR){
+    G.bx = px + CFG.paddleW + CFG.ballR;
+    bounce(G.py, ph, 1);
+  }
+  // cpu paddle (right)
+  if (G.vx > 0 && G.bx + CFG.ballR > cx - CFG.paddleW &&
+      G.bx < cx && Math.abs(G.by - G.cy) < ph/2 + CFG.ballR){
+    G.bx = cx - CFG.paddleW - CFG.ballR;
+    bounce(G.cy, ph, -1);
+  }
+
+  // scoring
+  if (G.bx < -CFG.ballR) point('cpu');
+  else if (G.bx > W + CFG.ballR) point('you');
+}
+
+function bounce(paddleCentre, ph, dir){
+  const rel = (G.by - paddleCentre) / (ph/2);          // -1..1
+  const speed = Math.min(Math.hypot(G.vx,G.vy) * CFG.ballSpeedUp, CFG.ballSpeedMax);
+  const ang = rel * (Math.PI/3.2);                     // up to ~56°
+  G.vx = dir * speed * Math.cos(ang);
+  G.vy = speed * Math.sin(ang);
+}
+
+/* ---- Render ---- */
+function draw(){
+  ctx.clearRect(0,0,W,H);
+  // court
+  ctx.fillStyle = getCss('--court'); ctx.fillRect(0,0,W,H);
+  // centre net
+  ctx.strokeStyle = getCss('--line'); ctx.lineWidth = 2;
+  ctx.setLineDash([8,10]); ctx.beginPath();
+  ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
+
+  const ph = paddlePx();
+  // player paddle (accent)
+  ctx.fillStyle = CFG.accent;
+  roundRect(18, G.py-ph/2, CFG.paddleW, ph, 5);
+  // cpu paddle (paper)
+  ctx.fillStyle = getCss('--paper');
+  roundRect(W-18-CFG.paddleW, G.cy-ph/2, CFG.paddleW, ph, 5);
+
+  // ball = Cam #106, or a disc fallback
+  if (camReady){
+    const d = CFG.ballR*2.6;
+    ctx.save(); ctx.beginPath();
+    ctx.arc(G.bx, G.by, d/2, 0, Math.PI*2); ctx.closePath(); ctx.clip();
+    ctx.drawImage(camImg, G.bx-d/2, G.by-d/2, d, d); ctx.restore();
+    ctx.strokeStyle = CFG.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(G.bx,G.by,d/2,0,Math.PI*2); ctx.stroke();
+  } else {
+    ctx.fillStyle = CFG.accent;
+    ctx.beginPath(); ctx.arc(G.bx,G.by,CFG.ballR,0,Math.PI*2); ctx.fill();
+  }
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill();
+}
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+/* ---- Loop (fixed step, decoupled from refresh rate) ---- */
+let last = 0, acc = 0; const DT = 1000/60;
+function frame(t){
+  if (!last) last = t;
+  acc += Math.min(t - last, 60); last = t;
+  if (G.state === 'playing'){ while (acc >= DT){ step(); acc -= DT; } }
+  draw();
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+/* ---- Input: keyboard (desktop) + drag (mobile) ---- */
+const keys = {};
+addEventListener('keydown', e=>{
+  if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  if (e.key === 'p' || e.key === 'P') togglePause();
+  keys[e.key] = true;
+});
+addEventListener('keyup', e=> keys[e.key] = false);
+function keyLoop(){
+  if (G.state === 'playing'){
+    const spd = H*0.02;
+    if (keys['ArrowUp']) G.py -= spd;
+    if (keys['ArrowDown']) G.py += spd;
+    G.py = clamp(G.py, paddlePx()/2, H - paddlePx()/2);
+  }
+  requestAnimationFrame(keyLoop);
+}
+requestAnimationFrame(keyLoop);
+
+function pointerMove(clientY){
+  const r = cv.getBoundingClientRect();
+  G.py = clamp(clientY - r.top, paddlePx()/2, H - paddlePx()/2);
+}
+cv.addEventListener('pointerdown', e=>{ cv.setPointerCapture(e.pointerId); pointerMove(e.clientY); });
+cv.addEventListener('pointermove', e=>{ if (e.pressure>0 || e.buttons>0 || e.pointerType==='touch') pointerMove(e.clientY); });
+
+function togglePause(){
+  if (G.state === 'playing'){ G.state='paused'; cardTitle.textContent='Paused';
+    cardTitle.className=''; cardText.textContent=''; document.querySelector('.rules').textContent='';
+    startBtn.textContent='Resume'; modal.hidden=false; }
+  else if (G.state === 'paused'){ G.state='playing'; modal.hidden=true; last=0; }
+}
+
+startBtn.addEventListener('click', ()=>{
+  if (G.state === 'paused'){ G.state='playing'; modal.hidden=true; last=0; return; }
+  newGame(); last=0;
+});
+
+resize();
+</script>
+</body>
+</html>
