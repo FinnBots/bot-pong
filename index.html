@@ -268,12 +268,16 @@ function bounce(paddleCentre, ph, dir){
 /* ---- Render ---- */
 function draw(){
   ctx.clearRect(0,0,W,H);
-  // court
+  // court — base + soft vignette for depth
   ctx.fillStyle = getCss('--court'); ctx.fillRect(0,0,W,H);
-  // centre net
+  const vg = ctx.createRadialGradient(W/2,H/2,H*0.2,W/2,H/2,H*0.78);
+  vg.addColorStop(0,'rgba(255,255,255,0.045)'); vg.addColorStop(1,'rgba(0,0,0,0.24)');
+  ctx.fillStyle = vg; ctx.fillRect(0,0,W,H);
+  // centre net + court circle
   ctx.strokeStyle = getCss('--line'); ctx.lineWidth = 2;
   ctx.setLineDash([8,10]); ctx.beginPath();
   ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
+  ctx.globalAlpha = 0.5; ctx.beginPath(); ctx.arc(W/2,H/2,Math.min(W,H)*0.16,0,6.283); ctx.stroke(); ctx.globalAlpha = 1;
 
   const ph = paddlePx();
   // player paddle (accent)
