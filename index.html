@@ -244,14 +244,16 @@ if (TEST_MODE) document.body.classList.add('test');
 /* ---- Tunables (data-driven: change a value, not the code) ---- */
 const CFG = {
   winScore:    11,
-  paddleH:     0.18,   // fraction of court height
+  paddleH:     0.16,   // fraction of court height
   paddleW:     12,     // px
   ballR:       13,     // px — the ball IS Bot #106 (Cam), sized to read clearly
-  ballSpeed0:  6.2,    // starting px/frame at 60fps-equiv
-  ballSpeedUp: 1.045,  // multiply on each paddle hit
-  ballSpeedMax:16,
-  cpuEase:     0.085,  // CPU tracking (lower = beatable)
-  cpuMiss:     0.10,   // CPU aim jitter (fraction of paddle height)
+  ballSpeed0:  6.6,    // starting px/frame at 60fps-equiv
+  ballSpeedUp: 1.20,   // multiply on each paddle hit — a point resolves in ~6-10
+  ballSpeedMax:34,     // hits instead of ~26, so a rally always goes somewhere
+  minAng:      0.34,   // rad — a dead-centre hit must NOT return a flat ball
+  cpuSpeedF:   0.015,  // CPU paddle top speed, fraction of court height per frame
+  cpuErr:      0.60,   // CPU aim error (paddle heights) — why it misses
+  padSpeedF:   0.032,  // your paddle CHASES the pointer at this top speed
   accent:      '#f2a03d',
 };
 
@@ -288,11 +290,24 @@ const G = {
   state: 'ready',            // 'ready' | 'playing' | 'paused' | 'over'
   you: 0, cpu: 0,
   py: 0, cy: 0,              // paddle centres (px)
+  pyWant: 0,                 // where your pointer/keys want the paddle
+  cpuErr: 0,                 // CPU's aim error for the current ball
   bx: 0, by: 0, vx: 0, vy: 0,
-  reduced: matchMedia('(prefers-reduced-motion:reduce)').matches,
 };
 
 function paddlePx(){ return H * CFG.paddleH; }
+
+/* Where the ball will cross a given x, bouncing off the top and bottom walls. */
+function predictY(targetX){
+  let y = G.by, vy = G.vy, x = G.bx, vx = G.vx;
+  if (vx === 0) return y;
+  for (let i = 0; i < 4000 && (vx > 0 ? x < targetX : x > targetX); i++){
+    x += vx; y += vy;
+    if (y < CFG.ballR){ y = CFG.ballR; vy = Math.abs(vy); }
+    if (y > H - CFG.ballR){ y = H - CFG.ballR; vy = -Math.abs(vy); }
+  }
+  return y;
+}
 
 function serve(dir){
   G.bx = W/2; G.by = H/2;
@@ -305,7 +320,7 @@ function serve(dir){
 function newGame(){
   resize();
   G.you = 0; G.cpu = 0;
-  G.py = H/2; G.cy = H/2;
+  G.py = H/2; G.cy = H/2; G.pyWant = H/2;
   updateScore();
   serve(Math.random()<0.5 ? -1 : 1);
   G.state = 'playing';
@@ -319,6 +334,7 @@ function point(who){
   updateScore();
   if (G.you >= CFG.winScore || G.cpu >= CFG.winScore){ return endGame(); }
   G.py = clamp(G.py, paddlePx()/2, H - paddlePx()/2);
+  G.pyWant = clamp(G.pyWant, paddlePx()/2, H - paddlePx()/2);
   serve(who === 'you' ? -1 : 1); // serve toward the loser
 }
 
@@ -340,12 +356,26 @@ const clamp = (v,a,b)=> v<a?a : v>b?b : v;
 /* ---- Physics step (fixed timestep) ---- */
 function step(){
   const ph = paddlePx();
-  // CPU: ease toward ball with a little jitter, only when ball approaches it
-  const aim = G.by + (G.reduced ? 0 : (Math.sin(G.bx*0.01) * ph * CFG.cpuMiss));
-  G.cy += (aim - G.cy) * CFG.cpuEase;
+  /* CPU: predicts where the ball will arrive and moves at a capped speed, so it
+     misses because it cannot get there — not from a sine wobble that a player
+     with prefers-reduced-motion used to have switched off, which made the CPU
+     strictly better for them. */
+  const cpuSpd = H * CFG.cpuSpeedF;
+  if (G.vx > 0 && G.bx > W*0.4){
+    const aim = predictY(W-18-CFG.paddleW-CFG.ballR) + G.cpuErr;
+    G.cy += clamp(aim - G.cy, -cpuSpd, cpuSpd);
+  } else {
+    G.cy += clamp(H/2 - G.cy, -cpuSpd*0.5, cpuSpd*0.5);
+  }
   G.cy = clamp(G.cy, ph/2, H - ph/2);
+  /* Your paddle chases the pointer at a top speed instead of teleporting to it,
+     so a cross-court flick can be punished and the match can actually be lost. */
+  const padSpd = H * CFG.padSpeedF;
+  G.py += clamp(G.pyWant - G.py, -padSpd, padSpd);
+  G.py = clamp(G.py, ph/2, H - ph/2);
 
   // move ball
+  const prevBx = G.bx;
   G.bx += G.vx; G.by += G.vy;
 
   // top/bottom walls
@@ -353,16 +383,19 @@ function step(){
   if (G.by > H - CFG.ballR){ G.by = H - CFG.ballR; G.vy = -Math.abs(G.vy); }
 
   const px = 18, cx = W - 18; // paddle x positions
-  // player paddle (left)
-  if (G.vx < 0 && G.bx - CFG.ballR < px + CFG.paddleW &&
-      G.bx > px && Math.abs(G.by - G.py) < ph/2 + CFG.ballR){
-    G.bx = px + CFG.paddleW + CFG.ballR;
+  /* SWEPT: did the ball CROSS the paddle face this frame? A per-frame box test
+     lets a fast ball tunnel clean through a 12px paddle, which is what used to
+     decide points once the rally got quick. */
+  const face = px + CFG.paddleW + CFG.ballR;
+  if (G.vx < 0 && prevBx >= face && G.bx <= face &&
+      Math.abs(G.by - G.py) < ph/2 + CFG.ballR){
+    G.bx = face;
     bounce(G.py, ph, 1);
   }
-  // cpu paddle (right)
-  if (G.vx > 0 && G.bx + CFG.ballR > cx - CFG.paddleW &&
-      G.bx < cx && Math.abs(G.by - G.cy) < ph/2 + CFG.ballR){
-    G.bx = cx - CFG.paddleW - CFG.ballR;
+  const cface = cx - CFG.paddleW - CFG.ballR;
+  if (G.vx > 0 && prevBx <= cface && G.bx >= cface &&
+      Math.abs(G.by - G.cy) < ph/2 + CFG.ballR){
+    G.bx = cface;
     bounce(G.cy, ph, -1);
   }
 
@@ -374,7 +407,9 @@ function step(){
 function bounce(paddleCentre, ph, dir){
   const rel = (G.by - paddleCentre) / (ph/2);          // -1..1
   const speed = Math.min(Math.hypot(G.vx,G.vy) * CFG.ballSpeedUp, CFG.ballSpeedMax);
-  const ang = rel * (Math.PI/3.2);                     // up to ~56°
+  let ang = rel * (Math.PI/3.2);                      // up to ~56°
+  if (Math.abs(ang) < CFG.minAng) ang = (rel >= 0 ? 1 : -1) * CFG.minAng;
+  G.cpuErr = (Math.random()*2 - 1) * paddlePx() * CFG.cpuErr;   // fresh read each hit
   G.vx = dir * speed * Math.cos(ang);
   G.vy = speed * Math.sin(ang);
 }
@@ -422,7 +457,7 @@ let last = 0, acc = 0; const DT = 1000/60;
 function frame(t){
   if (!last) last = t;
   acc += Math.min(t - last, 60); last = t;
-  if (G.state === 'playing'){ while (acc >= DT){ step(); acc -= DT; } }
+  if (G.state === 'playing'){ while (acc >= DT && G.state === 'playing'){ step(); acc -= DT; } }
   draw();
   requestAnimationFrame(frame);
 }
@@ -439,9 +474,9 @@ addEventListener('keyup', e=> keys[e.key] = false);
 function keyLoop(){
   if (G.state === 'playing'){
     const spd = H*0.02;
-    if (keys['ArrowUp']) G.py -= spd;
-    if (keys['ArrowDown']) G.py += spd;
-    G.py = clamp(G.py, paddlePx()/2, H - paddlePx()/2);
+    if (keys['ArrowUp']) G.pyWant -= spd;
+    if (keys['ArrowDown']) G.pyWant += spd;
+    G.pyWant = clamp(G.pyWant, paddlePx()/2, H - paddlePx()/2);
   }
   requestAnimationFrame(keyLoop);
 }
@@ -449,7 +484,7 @@ requestAnimationFrame(keyLoop);
 
 function pointerMove(clientY){
   const r = cv.getBoundingClientRect();
-  G.py = clamp(clientY - r.top, paddlePx()/2, H - paddlePx()/2);
+  G.pyWant = clamp(clientY - r.top, paddlePx()/2, H - paddlePx()/2);
 }
 cv.addEventListener('pointerdown', e=>{ cv.setPointerCapture(e.pointerId); pointerMove(e.clientY); });
 cv.addEventListener('pointermove', e=>{ if (e.pressure>0 || e.buttons>0 || e.pointerType==='touch') pointerMove(e.clientY); });
