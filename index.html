@@ -214,10 +214,11 @@ canvas{ touch-action:none; }
 
   <div class="stage">
     <canvas id="court"></canvas>
-    <div class="modal" id="modal">
-      <div class="card" id="card">
+    <div class="modal" id="overOverlay">
+      <div class="card" id="overCard">
         <h1 id="cardTitle">Bot Pong</h1>
         <p id="cardText">Get the ball past Cam. First to 11 wins.</p>
+        <b id="oScore" hidden>0</b>
         <div class="rules">
           Drag to move your paddle — the ball speeds up every rally.
         </div>
@@ -259,7 +260,7 @@ const CFG = {
 
 const cv = document.getElementById('court');
 const ctx = cv.getContext('2d');
-const modal = document.getElementById('modal');
+const modal = document.getElementById('overOverlay');
 const startBtn = document.getElementById('startBtn');
 const cardTitle = document.getElementById('cardTitle');
 const cardText = document.getElementById('cardText');
@@ -324,7 +325,7 @@ function newGame(){
   updateScore();
   serve(Math.random()<0.5 ? -1 : 1);
   G.state = 'playing';
-  modal.hidden = true;
+  modal.hidden = true; modal.classList.remove('show');
 }
 
 function updateScore(){ elYou.textContent = G.you; elCpu.textContent = G.cpu; }
@@ -340,10 +341,16 @@ function point(who){
 
 function endGame(){
   G.state = 'over';
+  modal.classList.add('show');   // the class the shared stickiness layer watches
   const win = G.you > G.cpu;
   cardTitle.textContent = win ? 'You win!' : 'Cam wins';
   cardTitle.className = win ? 'you' : 'cpu';
   cardText.innerHTML = 'Final <span class="big">'+G.you+' — '+G.cpu+'</span>';
+  /* #oScore is STATIC markup, not written into cardText: the shared stickiness
+     layer binds once at page load, and an id created later inside an innerHTML
+     string does not exist when it looks. It carries YOUR points alone, because
+     the layer parses its textContent as a number. */
+  document.getElementById('oScore').textContent = G.you;
   document.querySelector('.rules').textContent = win
     ? 'Nice rallies. Go again?'
     : 'Cam got the better of that one. Rematch?';
@@ -493,11 +500,11 @@ function togglePause(){
   if (G.state === 'playing'){ G.state='paused'; cardTitle.textContent='Paused';
     cardTitle.className=''; cardText.textContent=''; document.querySelector('.rules').textContent='';
     startBtn.textContent='Resume'; modal.hidden=false; }
-  else if (G.state === 'paused'){ G.state='playing'; modal.hidden=true; last=0; }
+  else if (G.state === 'paused'){ G.state='playing'; modal.hidden = true; modal.classList.remove('show'); last=0; }
 }
 
 startBtn.addEventListener('click', ()=>{
-  if (G.state === 'paused'){ G.state='playing'; modal.hidden=true; last=0; return; }
+  if (G.state === 'paused'){ G.state='playing'; modal.hidden = true; modal.classList.remove('show'); last=0; return; }
   newGame(); last=0;
 });
 
