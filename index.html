@@ -622,8 +622,8 @@ function step(){
 
 function bounce(paddleCentre, ph, dir){
   /* The ending screen's tally needs something a player actually felt, and a
-     Pong match's story is its rallies, not its clock. Counted here because
-     this is the one place a ball is returned by either paddle. */
+     paddle-rally match's story is its rallies, not its clock. Counted here
+     because this is the one place a ball is returned by either paddle. */
   G.rally++; if (G.rally > G.bestRally) G.bestRally = G.rally;
   const rel = (G.by - paddleCentre) / (ph/2);          // -1..1
   const speed = Math.min(Math.hypot(G.vx,G.vy) * CFG.ballSpeedUp, CFG.ballSpeedMax);
