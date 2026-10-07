@@ -427,8 +427,17 @@ canvas{ touch-action:none; }
 
 <script>
 /* ---- Bot Pong — Free only, wallet-dead (no wallet code, no memo, no money path). ---- */
+/* ---- HEADLESS: the sim must run with no DOM at all -----------------------
+   Bot Pong touched `document` at module scope, so requiring this engine threw
+   `document is not defined` and every gate that drives a sim — verify-inputs,
+   playtest, skill-ladder — reported a loud SKIP. Its controls had never been
+   examined by anything. This has to be the FIRST thing in the file: the very
+   next line already reaches for document.body. */
+const HEADLESS = (typeof document === 'undefined');
+const $id = id => HEADLESS ? null : document.getElementById(id);
+
 const TEST_MODE = false;
-if (TEST_MODE) document.body.classList.add('test');
+if (TEST_MODE && !HEADLESS) document.body.classList.add('test');
 
 /* ---- Tunables (data-driven: change a value, not the code) ---- */
 const CFG = {
@@ -446,36 +455,41 @@ const CFG = {
   accent:      '#f2a03d',
 };
 
-const cv = document.getElementById('court');
-const ctx = cv.getContext('2d');
-const modal = document.getElementById('overOverlay');
-const startBtn = document.getElementById('startBtn');
-const cardTitle = document.getElementById('cardTitle');
-const cardText = document.getElementById('cardText');
-const elYou = document.getElementById('scoreYou');
-const elCpu = document.getElementById('scoreCpu');
-document.getElementById('target').textContent = CFG.winScore;
+const cv = $id('court');
+const ctx = HEADLESS ? null : cv.getContext('2d');
+const modal = $id('overOverlay');
+const startBtn = $id('startBtn');
+const cardTitle = $id('cardTitle');
+const cardText = $id('cardText');
+const elYou = $id('scoreYou');
+const elCpu = $id('scoreCpu');
+if (!HEADLESS) $id('target').textContent = CFG.winScore;
 
 /* Cam #106 as the ball, with a filled-disc fallback if the image is blocked */
-const camImg = new Image();
-camImg.crossOrigin = 'anonymous';
+const camImg = HEADLESS ? null : new Image();
 let camReady = false;
-camImg.onload = () => camReady = true;
-camImg.onerror = () => camReady = false;
-camImg.src = 'assets/hero/bot-106.png';   /* the LOCAL keyed Bot 106: transparent, no runtime Arweave fetch */
+if (!HEADLESS){
+  camImg.crossOrigin = 'anonymous';
+  camImg.onload = () => camReady = true;
+  camImg.onerror = () => camReady = false;
+}
+if (!HEADLESS) camImg.src = 'assets/hero/bot-106.png';   /* the LOCAL keyed Bot 106: transparent, no runtime Arweave fetch */
 
 let W = 0, H = 0, DPR = 1;
 function resize(){
+  /* a court with no canvas still has a size — without it W and H stay 0 and
+     every paddle, speed and bounce in the sim comes out NaN */
+  if (HEADLESS){ W = 640; H = 360; DPR = 1; return; }
   const r = cv.getBoundingClientRect();
   DPR = Math.min(window.devicePixelRatio || 1, 2);
   W = Math.max(200, r.width); H = Math.max(200, r.height);
   cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
   ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 }
-window.addEventListener('resize', resize);
+if (!HEADLESS) window.addEventListener('resize', resize);
 
 /* ---- State ---- */
-const G = {
+let G = {
   state: 'ready',            // 'ready' | 'playing' | 'paused' | 'over'
   you: 0, cpu: 0,
   py: 0, cy: 0,              // paddle centres (px)
@@ -483,6 +497,11 @@ const G = {
   cpuErr: 0,                 // CPU's aim error for the current ball
   bx: 0, by: 0, vx: 0, vy: 0,
   rally: 0, bestRally: 0,    // paddle hits in the current point, and the match's longest
+  /* THE CONTROLS, on the state. They used to be a module-level `keys` object
+     nudging G.pyWant from its own requestAnimationFrame loop — outside the
+     fixed-timestep sim and unreachable by any driver. The nudge now happens
+     inside step(), so it is deterministic as well as drivable. */
+  inUp: false, inDown: false,
 };
 
 function paddlePx(){ return H * CFG.paddleH; }
@@ -518,7 +537,7 @@ function newGame(){
   hideCards();
 }
 
-function updateScore(){ elYou.textContent = G.you; elCpu.textContent = G.cpu; }
+function updateScore(){ if (HEADLESS) return; elYou.textContent = G.you; elCpu.textContent = G.cpu; }
 
 function point(who){
   if (who === 'you') G.you++; else G.cpu++;
@@ -538,19 +557,22 @@ function point(who){
    card is also the start screen. Two cards now, and ONE function opens each, so
    the states cannot drift apart. */
 function showStartCard(){
+  if (HEADLESS) return;
   document.getElementById('overCard').hidden = true;
   document.getElementById('startCard').hidden = false;
   modal.classList.remove('show');   // intro/pause, not a result: never bank a best here
   modal.hidden = false;
 }
 function hideCards(){
+  if (HEADLESS) return;
   modal.hidden = true; modal.classList.remove('show');
   document.getElementById('overCard').hidden = true;
   document.getElementById('startCard').hidden = false;
 }
 function endGame(){
-  G.state = 'over';
+  G.state = 'over';                    // the match result is SIM, the card is DOM
   const win = G.you > G.cpu;
+  if (HEADLESS) return;
   document.getElementById('overTitle').textContent = win ? 'MATCH WON' : 'CAM TAKES IT';
   document.getElementById('overTitle').className = win ? 'you' : 'cpu';
   /* #oScore is STATIC markup and carries YOUR points ALONE: the shared
@@ -584,6 +606,15 @@ function step(){
     G.cy += clamp(H/2 - G.cy, -cpuSpd*0.5, cpuSpd*0.5);
   }
   G.cy = clamp(G.cy, ph/2, H - ph/2);
+  /* the held controls, applied inside the fixed step so they are deterministic
+     and so a driver can hold one — the keyboard's own rAF loop used to do this
+     outside the sim entirely */
+  if (G.inUp || G.inDown){
+    const nudge = H*0.02;
+    if (G.inUp)   G.pyWant -= nudge;
+    if (G.inDown) G.pyWant += nudge;
+    G.pyWant = clamp(G.pyWant, ph/2, H - ph/2);
+  }
   /* Your paddle chases the pointer at a top speed instead of teleporting to it,
      so a cross-court flick can be punished and the match can actually be lost. */
   const padSpd = H * CFG.padSpeedF;
@@ -636,6 +667,7 @@ function bounce(paddleCentre, ph, dir){
 
 /* ---- Render ---- */
 function draw(){
+  if (HEADLESS) return;
   ctx.clearRect(0,0,W,H);
   // court
   ctx.fillStyle = getCss('--court'); ctx.fillRect(0,0,W,H);
@@ -681,33 +713,58 @@ function frame(t){
   draw();
   requestAnimationFrame(frame);
 }
-requestAnimationFrame(frame);
+if (!HEADLESS) requestAnimationFrame(frame);
+
+/* ================= HEADLESS CONTRACT =======================================
+   { CFG, newRun, stepGame } so the factory's gates can drive the match with no
+   DOM: verify-inputs holds a control and asks whether the world moved,
+   playtest and skill-ladder drive whole runs. The sim already lived entirely on
+   G; all this does is let a caller own one and advance it a tick at a time.
+   ======================================================================== */
+function newRun(){
+  G = { state:'ready', you:0, cpu:0, py:0, cy:0, pyWant:0, cpuErr:0,
+        bx:0, by:0, vx:0, vy:0, rally:0, bestRally:0, inUp:false, inDown:false };
+  newGame();                       // sizes the court, serves, sets state 'playing'
+  return G;
+}
+function stepGame(s, dt){
+  if (s !== G) G = s;              // the caller owns the run; adopt it
+  const ev = {};
+  if (G.state !== 'playing') return ev;
+  const you0 = G.you, cpu0 = G.cpu;
+  step();
+  if (G.you !== you0) ev.point = 'you';
+  if (G.cpu !== cpu0) ev.point = 'cpu';
+  if (G.state === 'over') ev.over = true;
+  return ev;
+}
+if (HEADLESS) module.exports = { CFG, newRun, stepGame };
 
 /* ---- Input: keyboard (desktop) + drag (mobile) ---- */
 const keys = {};
-addEventListener('keydown', e=>{
+if (!HEADLESS) addEventListener('keydown', e=>{
   if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
   if (e.key === 'p' || e.key === 'P') togglePause();
   keys[e.key] = true;
 });
-addEventListener('keyup', e=> keys[e.key] = false);
+if (!HEADLESS) addEventListener('keyup', e=> keys[e.key] = false);
 function keyLoop(){
-  if (G.state === 'playing'){
-    const spd = H*0.02;
-    if (keys['ArrowUp']) G.pyWant -= spd;
-    if (keys['ArrowDown']) G.pyWant += spd;
-    G.pyWant = clamp(G.pyWant, paddlePx()/2, H - paddlePx()/2);
-  }
+  /* mirror the held keys onto the run state and nothing else — step() applies
+     them, so the paddle moves at the sim's rate rather than the display's */
+  G.inUp   = !!keys['ArrowUp'];
+  G.inDown = !!keys['ArrowDown'];
   requestAnimationFrame(keyLoop);
 }
-requestAnimationFrame(keyLoop);
+if (!HEADLESS) requestAnimationFrame(keyLoop);
 
 function pointerMove(clientY){
   const r = cv.getBoundingClientRect();
   G.pyWant = clamp(clientY - r.top, paddlePx()/2, H - paddlePx()/2);
 }
-cv.addEventListener('pointerdown', e=>{ cv.setPointerCapture(e.pointerId); pointerMove(e.clientY); });
-cv.addEventListener('pointermove', e=>{ if (e.pressure>0 || e.buttons>0 || e.pointerType==='touch') pointerMove(e.clientY); });
+if (!HEADLESS){
+  cv.addEventListener('pointerdown', e=>{ cv.setPointerCapture(e.pointerId); pointerMove(e.clientY); });
+  cv.addEventListener('pointermove', e=>{ if (e.pressure>0 || e.buttons>0 || e.pointerType==='touch') pointerMove(e.clientY); });
+}
 
 function togglePause(){
   if (G.state === 'playing'){ G.state='paused'; cardTitle.textContent='Paused';
@@ -716,13 +773,13 @@ function togglePause(){
   else if (G.state === 'paused'){ G.state='playing'; hideCards(); last=0; }
 }
 
-startBtn.addEventListener('click', ()=>{
+if (!HEADLESS) startBtn.addEventListener('click', ()=>{
   if (G.state === 'paused'){ G.state='playing'; hideCards(); last=0; return; }
   newGame(); last=0;
 });
 /* #retryBtn is the id the shared stickiness layer clicks for one-key replay,
    so the match-over card's button must start a new match. */
-document.getElementById('retryBtn').addEventListener('click', ()=>{ newGame(); last=0; });
+if (!HEADLESS) $id('retryBtn').addEventListener('click', ()=>{ newGame(); last=0; });
 
 resize();
 </script>
