@@ -490,7 +490,7 @@ if (!HEADLESS) window.addEventListener('resize', resize);
 
 /* ---- State ---- */
 let G = {
-  state: 'ready',            // 'ready' | 'playing' | 'paused' | 'over'
+  state: 'ready', phase: 'play',   // `phase` is the chassis contract's field            // 'ready' | 'playing' | 'paused' | 'over'
   you: 0, cpu: 0,
   py: 0, cy: 0,              // paddle centres (px)
   pyWant: 0,                 // where your pointer/keys want the paddle
@@ -533,7 +533,7 @@ function newGame(){
   updateScore();
   serve(Math.random()<0.5 ? -1 : 1);
   G.rally = 0; G.bestRally = 0;
-  G.state = 'playing';
+  setState('playing');
   hideCards();
 }
 
@@ -570,7 +570,7 @@ function hideCards(){
   document.getElementById('startCard').hidden = false;
 }
 function endGame(){
-  G.state = 'over';                    // the match result is SIM, the card is DOM
+  setState('over');                    // the match result is SIM, the card is DOM
   const win = G.you > G.cpu;
   if (HEADLESS) return;
   document.getElementById('overTitle').textContent = win ? 'MATCH WON' : 'CAM TAKES IT';
@@ -590,6 +590,18 @@ function endGame(){
 }
 
 const clamp = (v,a,b)=> v<a?a : v>b?b : v;
+
+/* ONE place sets the match state, so this game's own `state` and the chassis
+   contract's `phase` cannot drift apart. CLAUDE.md: phase is {play, dead, won}
+   and sub-states live INSIDE play — so 'ready' and 'paused' are still 'play'.
+   Exporting { newRun, stepGame } opted this game into the termination contract,
+   and verify-game drives a no-input run until `phase === 'dead'`; it uses
+   `state`, so the sim ran to the cap and was reported as non-terminating when
+   in fact Cam wins 11-0 in 31 seconds. */
+function setState(v){
+  G.state = v;
+  G.phase = (v === 'over') ? (G.you > G.cpu ? 'won' : 'dead') : 'play';
+}
 
 /* ---- Physics step (fixed timestep) ---- */
 function step(){
@@ -722,7 +734,7 @@ if (!HEADLESS) requestAnimationFrame(frame);
    G; all this does is let a caller own one and advance it a tick at a time.
    ======================================================================== */
 function newRun(){
-  G = { state:'ready', you:0, cpu:0, py:0, cy:0, pyWant:0, cpuErr:0,
+  G = { state:'ready', phase:'play', you:0, cpu:0, py:0, cy:0, pyWant:0, cpuErr:0,
         bx:0, by:0, vx:0, vy:0, rally:0, bestRally:0, inUp:false, inDown:false };
   newGame();                       // sizes the court, serves, sets state 'playing'
   return G;
@@ -767,14 +779,14 @@ if (!HEADLESS){
 }
 
 function togglePause(){
-  if (G.state === 'playing'){ G.state='paused'; cardTitle.textContent='Paused';
+  if (G.state === 'playing'){ setState('paused'); cardTitle.textContent='Paused';
     cardTitle.className=''; cardText.textContent=''; document.querySelector('.rules').textContent='';
     startBtn.textContent='Resume'; showStartCard(); }
-  else if (G.state === 'paused'){ G.state='playing'; hideCards(); last=0; }
+  else if (G.state === 'paused'){ setState('playing'); hideCards(); last=0; }
 }
 
 if (!HEADLESS) startBtn.addEventListener('click', ()=>{
-  if (G.state === 'paused'){ G.state='playing'; hideCards(); last=0; return; }
+  if (G.state === 'paused'){ setState('playing'); hideCards(); last=0; return; }
   newGame(); last=0;
 });
 /* #retryBtn is the id the shared stickiness layer clicks for one-key replay,
