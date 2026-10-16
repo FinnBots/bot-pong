@@ -1,0 +1,1463 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" data-fb-vp="1">
+<title>Bot Pong</title>
+<style>
+  :root{
+    --accent:#f2a03d; --ink:#0d1017; --court:#111722; --line:#243247;
+    --paper:#e9edf4; --muted:#7d8aa0; --win:#5bd6a0; --lose:#ff6b6b;
+    --edge:#1b2431;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    background:var(--ink); color:var(--paper);
+    font-family:'Trebuchet MS','Segoe UI',system-ui,sans-serif;
+    display:flex; flex-direction:column; min-height:100dvh;
+    overflow:hidden; user-select:none; -webkit-user-select:none;
+    touch-action:none;
+  }
+  header,.facts,.controls,footer{flex:0 0 auto}
+  .stage{flex:1 1 auto; position:relative; min-height:0}
+
+  /* testbar — only shown when TEST_MODE */
+  #testbar{display:none; background:#3a2a00; color:#ffd479; text-align:center;
+    font-size:12px; padding:4px 8px; letter-spacing:.02em}
+  body.test #testbar{display:block}
+
+  header{display:flex; align-items:center; gap:10px; padding:10px 14px;
+    border-bottom:1px solid var(--edge)}
+  header img{width:30px;height:30px;border-radius:7px;background:var(--court);
+    border:1px solid var(--line)}
+  header .title{font-size:18px;font-weight:700;letter-spacing:.01em}
+  header .title b{color:var(--accent)}
+  header .spacer{flex:1}
+  header .who{font-size:12px;color:var(--muted)}
+
+  .facts{display:flex;gap:0;border-bottom:1px solid var(--edge);
+    background:var(--court)}
+  .facts div{flex:1;padding:7px 6px;text-align:center;
+    border-right:1px solid var(--edge)}
+  .facts div:last-child{border-right:0}
+  .facts .k{font-size:10px;color:var(--muted)}
+  .facts .v{font-size:16px;font-weight:700;font-variant-numeric:tabular-nums}
+  .facts .v.you{color:var(--accent)}
+
+  canvas{display:block;width:100%;height:100%}
+
+  .controls{padding:8px 14px;border-top:1px solid var(--edge);
+    display:flex;align-items:center;justify-content:center;gap:14px;
+    font-size:12px;color:var(--muted);min-height:40px}
+  .controls kbd{background:var(--court);border:1px solid var(--line);
+    border-radius:5px;padding:1px 6px;color:var(--paper);font-family:inherit}
+  .touchonly{display:none}
+  @media (pointer:coarse){ .keyonly{display:none} .touchonly{display:inline} }
+
+  footer{display:flex;gap:0;border-top:1px solid var(--edge)}
+  footer a{flex:1;text-align:center;padding:10px 6px;color:var(--muted);
+    text-decoration:none;font-size:13px;border-right:1px solid var(--edge)}
+  footer a:last-child{border-right:0}
+  footer a:hover,footer a:focus{color:var(--accent);outline:none}
+  footer a:focus-visible{outline:2px solid var(--accent);outline-offset:-2px}
+
+  /* modal */
+  .modal{position:absolute;inset:0;display:flex;align-items:center;
+    justify-content:center;background:rgba(6,9,14,.86);padding:20px;z-index:5}
+  .modal[hidden]{display:none}
+  .card{background:var(--court);border:1px solid var(--line);border-radius:14px;
+    padding:22px 22px 20px;max-width:340px;width:100%;text-align:center}
+  .card h1{margin:0 0 4px;font-size:24px}
+  .card h1.you{color:var(--win)} .card h1.cpu{color:var(--lose)}
+  .card p{margin:6px 0 0;color:var(--muted);font-size:14px;line-height:1.5}
+  .card .big{font-size:15px;color:var(--paper);margin-top:10px;
+    font-variant-numeric:tabular-nums}
+  .btn{margin-top:18px;display:inline-block;background:var(--accent);
+    color:#20160a;border:none;border-radius:10px;font-size:16px;font-weight:700;
+    padding:12px 26px;cursor:pointer;font-family:inherit;width:100%}
+  .btn:focus-visible{outline:3px solid #fff;outline-offset:2px}
+  .rules{margin-top:14px;font-size:12px;color:var(--muted);line-height:1.6}
+  @media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Jersey+15&display=swap" rel="stylesheet">
+<style id="fb-brand">
+/* ===== FINNBOTS BRAND LAYER v1 (2026-09-24) ==========================
+   Append-only override, injected as <style id="fb-brand"> AFTER every other
+   style block so it wins without editing a single line of a game's own CSS.
+   Three jobs:
+     1. BRAND  — the FinnBots lockup (bot mark + FINN/BOTS wordmark) in the topbar.
+     2. CABINET — the canvas reads as an arcade screen: bezel, amber rim light, glow.
+     3. THEME  — dark-mode parity with the hub (games.finnstergram.com adapts, the
+                 games did not, so hub -> game was a light/dark slap in the face).
+   Source of truth: factory/templates/brand-layer.css. Never hand-edit a game copy;
+   change it here and re-run apply-brand.sh. ==================================== */
+:root{
+  --fb-amber:#f2a03d; --fb-plum:#5f4c57; --fb-plum-deep:#3e323a;
+  --fb-screen:#241b28; --fb-bezel:#3e323a; --fb-rim:rgba(242,160,61,.45);
+  --fb-ink:#3e323a; --fb-surface:rgba(255,255,255,.55);
+}
+
+/* ---- 1. BRAND LOCKUP --------------------------------------------------- */
+.fb-mark{
+  display:inline-flex; align-items:center; gap:6px; flex:none;
+  text-decoration:none; color:var(--fb-plum); line-height:1;
+  padding:2px 4px; border-radius:999px; -webkit-tap-highlight-color:transparent;
+}
+.fb-mark:hover{ color:var(--fb-plum-deep); }
+.fb-mark:focus-visible{ outline:3px solid var(--electric,#3a6ff7); outline-offset:2px; }
+.fb-bot{ width:22px; height:22px; flex:none; display:block; }
+.fb-word{
+  font-family:var(--disp,'Jersey 15',system-ui,sans-serif);
+  font-size:16px; letter-spacing:.5px; color:currentColor; white-space:nowrap;
+}
+.fb-word i{ font-style:normal; color:var(--fb-amber); }
+/* Phones: the topbar also carries the mode pills + icon buttons, so drop the
+   wordmark and keep the bot mark rather than letting the row overflow. */
+@media (max-width:430px){ .fb-word{ display:none; } }
+body.is-portrait .fb-bot{ width:20px; height:20px; }
+
+</style>
+<style id="fb-device">
+/* ==========================================================================
+   FinnBots DEVICE LAYER — ONE scaling contract for laptop, tablet and phone.
+   Founder rule, 2026-09-25: "all games ... need to be playable on Laptops,
+   tablets and phones."
+
+   SOURCE OF TRUTH. Never hand-edit a game's copy — edit this file and re-run
+   apply-device.js across the roster (same discipline as brand-layer.css).
+
+   It is injected as the LAST <style> in <head>, AFTER the brand layer, so it
+   wins by source order and touches no existing CSS line. Everything below
+   section 3 assumes chassis markup; apply-device.js --safe stops before it for
+   the non-chassis games whose class names mean something else.
+
+   THE MODEL, in one line: the page is exactly one visible viewport tall, the
+   chrome is whatever is left after the play surface has taken what it needs,
+   and the controls are always reachable by the thumb that owns them.
+   ========================================================================== */
+
+/* ---- 1. the page fills the VISIBLE viewport ------------------------------
+   100vh on a phone is the viewport WITHOUT the browser's collapsing chrome:
+   a vh-sized column is taller than the screen, so the controls sit under the
+   address bar and the canvas is cut off. dvh tracks the real thing, and the
+   safe-area insets keep the notch and the home indicator off the buttons. */
+:root{
+  --fb-safe-t: env(safe-area-inset-top, 0px);
+  --fb-safe-b: env(safe-area-inset-bottom, 0px);
+  --fb-safe-l: env(safe-area-inset-left, 0px);
+  --fb-safe-r: env(safe-area-inset-right, 0px);
+  --fb-tap: 48px;                     /* 44 is the accessibility floor; 48 is comfortable */
+}
+html{ height:100%; }
+body{ min-height:100svh; overscroll-behavior:none; -webkit-text-size-adjust:100%; }
+@supports (height:100dvh){ body{ min-height:100dvh; } }
+
+/* ---- 2. touch behaviour -------------------------------------------------
+   Without these a double-tap on a control zooms the page, a long press pops a
+   selection bubble mid-game, and a drag on the canvas pulls the page to
+   refresh. All three are "the game is broken" to a player on a phone. */
+.ctl,.btn,.again,.ghostbtn,.modepill,.iconbtn,button{
+  touch-action:manipulation; -webkit-tap-highlight-color:transparent;
+  user-select:none; -webkit-user-select:none;
+}
+canvas{ touch-action:none; }
+
+/* ---- 3. hit targets on anything with a finger --------------------------- */
+@media (pointer:coarse){
+  .ctl{ min-width:var(--fb-tap); min-height:var(--fb-tap); }
+  .btn,.again,.ghostbtn{ min-height:var(--fb-tap); }
+  .modepill{ min-height:34px; }
+}
+
+
+</style>
+<style id="fb-outro-css">
+/* ==========================================================================
+   FinnBots OUTRO LAYER — the ending screen.  Founder, 2026-10-02, verbatim:
+   "there need to be a cool ending screen to games not just they end or game
+   over".
+
+   SOURCE OF TRUTH. Injected by apply-outro.js as <style id="fb-outro-css">,
+   last in <head> so it lands after the brand and device layers and wins by
+   source order. Never hand-edit a game's copy: edit this file and re-run the
+   injector across the roster.
+
+   What was there before: the chassis run-over card is a RECEIPT. "RUN OVER",
+   one score, one time, a retry button — identical whether the player cleared
+   the last round or walked into the first enemy. Nothing resolves, nothing is
+   celebrated, and the score has nothing to sit beside, so a good run and a bad
+   run feel the same. This layer turns that receipt into the four beats an
+   arcade ending actually has: a VERDICT that distinguishes winning from dying,
+   a TALLY that counts up, a RANK the run earned against the real board, and a
+   HOOK back into the next run.
+
+   Rules it is built to:
+     - every rule is scoped under .fb-outro or a body.fb-outro-* state, so a
+       game without the layer's own nodes is untouched. No existing selector is
+       redefined.
+     - the chassis card's own furniture stays in the DOM and keeps its text:
+       #oScore still holds the final score for the stickiness layer, the score
+       memo and the gates that read it. We hide the plain readout and draw our
+       own beside it, we never retype theirs.
+     - laptop / tablet / phone from ONE layer (Founder, 2026-09-25). The card is
+       height-bound on a landscape phone, so there is a compact mode at
+       max-height:560px that drops the hero and tightens the tally rather than
+       scrolling.
+     - prefers-reduced-motion kills every animation, and the ending still reads:
+       the tally lands on its final value, the rank bar is drawn full.
+   ========================================================================== */
+
+/* ---- 1. the outro block inside the existing card --------------------- */
+.fb-outro{ display:block; text-align:left; margin:10px 0 2px; }
+.fb-outro[hidden]{ display:none; }
+
+/* the chassis ".big" score readout: kept in the DOM, hidden from view, because
+   the tally below says the same number with ceremony. visibility, not display:
+   a display:none subtree reports zero size and two gates measure this node. */
+.fb-outro-on .card .big{ position:absolute; width:1px; height:1px; overflow:hidden;
+  clip:rect(0,0,0,0); white-space:nowrap; }
+/* the per-game stat line is harvested into tally rows, so the original would be
+   a duplicate */
+.fb-outro-on .card > p.fb-outro-src{ display:none; }
+
+/* ---- 2. the verdict band -------------------------------------------- */
+.fb-outro-kicker{ display:block; font-family:var(--body,system-ui); font-size:10.5px;
+  letter-spacing:.18em; text-transform:uppercase; font-weight:700;
+  color:inherit; opacity:.6; margin:0 0 2px; text-align:center; }
+.fb-outro-win .fb-outro-kicker{ color:var(--amber,#f2a03d); opacity:1; }
+
+/* ---- 3. the hero. Founder, 2026-09-25: "the hero needs to be Bot 106" ---
+   He is the one who just played the run, so he is the one on the ending
+   screen: lit and lifted on a clear, dimmed and tilted on a loss. */
+.fb-outro-hero{ display:block; margin:6px auto 8px; width:76px; height:76px;
+  object-fit:contain; image-rendering:auto;
+  filter:drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+/* `display:block` on a class BEATS the UA's `[hidden]` rule, so the hero the
+   layer hides on a decode error was still laid out — and a game that ships no
+   hero PNG (Bot Merge) drew a broken-image box in the middle of its ending.
+   Caught by playing the one game on the roster without the asset. */
+.fb-outro-hero[hidden]{ display:none; }
+.fb-outro-win .fb-outro-hero{
+  animation:fb-outro-pop .5s cubic-bezier(.2,1.5,.4,1) both;
+  filter:drop-shadow(0 0 14px rgba(242,160,61,.75)) drop-shadow(0 6px 10px rgba(0,0,0,.35)); }
+.fb-outro-end .fb-outro-hero{ transform:rotate(-7deg); opacity:.82; }
+@keyframes fb-outro-pop{ from{ transform:scale(.4) translateY(14px); opacity:0 }
+                           to{ transform:none; opacity:1 } }
+
+/* ---- 4. the tally ---------------------------------------------------- */
+.fb-outro-tally{ list-style:none; margin:0; padding:0; }
+.fb-outro-tally li{ display:flex; align-items:baseline; justify-content:space-between;
+  gap:10px; font-size:12.5px; line-height:1.25; padding:3px 0;
+  color:inherit;
+  border-bottom:1px dashed rgba(128,128,128,.3);
+  opacity:0; transform:translateY(4px);
+  animation:fb-outro-row .22s ease-out both; }
+.fb-outro-tally li b{ font-family:var(--disp,system-ui); font-size:14px; font-weight:400;
+  color:inherit; white-space:nowrap; }
+.fb-outro-tally li i{ font-style:normal; letter-spacing:.06em; text-transform:uppercase;
+  font-size:10.5px; font-weight:700; color:inherit; opacity:.62; }
+@keyframes fb-outro-row{ to{ opacity:1; transform:none } }
+
+/* the total. This is the line the whole screen exists to deliver, so it is the
+   only thing on the card in the display face at full size. */
+.fb-outro-total{ display:flex; align-items:baseline; justify-content:space-between;
+  gap:10px; margin:8px 0 2px; padding-top:7px; border-top:2px solid rgba(128,128,128,.4); }
+.fb-outro-total i{ font-style:normal; font-family:var(--body,system-ui); font-size:11px;
+  letter-spacing:.16em; text-transform:uppercase; font-weight:700;
+  color:inherit; opacity:.62; }
+.fb-outro-total b{ font-family:var(--disp,system-ui); font-size:30px; line-height:1;
+  color:var(--amber,#f2a03d); font-weight:400;
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1; }
+.fb-outro-counting .fb-outro-total b{ color:inherit; }
+
+/* ---- 5. the rank the run earned ------------------------------------- */
+.fb-outro-rank{ margin:9px 0 0; }
+.fb-outro-rank .fb-outro-title{ display:flex; align-items:center; justify-content:space-between;
+  gap:8px; font-family:var(--disp,system-ui); font-size:15px; line-height:1.1;
+  color:inherit; }
+.fb-outro-rank .fb-outro-title em{ font-style:normal; font-family:var(--body,system-ui);
+  font-size:10.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase;
+  color:inherit; opacity:.62; white-space:nowrap; }
+.fb-outro-bar{ position:relative; height:7px; margin:6px 0 0; border-radius:999px;
+  background:rgba(128,128,128,.28); overflow:hidden; }
+.fb-outro-bar span{ position:absolute; inset:0 auto 0 0; width:0;
+  border-radius:999px; background:var(--amber,#f2a03d);
+  transition:width .7s cubic-bezier(.2,.8,.3,1); }
+.fb-outro-note{ display:block; margin:5px 0 0; font-size:11.5px; line-height:1.4;
+  color:inherit; opacity:.75; }
+.fb-outro-note b{ color:inherit; font-weight:700; }
+
+/* ---- 5b. the chassis button row ------------------------------------
+   The stickiness layer inserts its run-line immediately before #retryBtn, so
+   on a game whose buttons live in a flex .btnrow (BotFord) the line becomes a
+   FLEX ITEM and sits beside the button instead of above it. It was tolerable
+   on the old two-line card and looks broken under a full ending screen, so
+   give it its own row — scoped to .fb-outro-on, so a game without this layer
+   keeps exactly the layout it shipped with. */
+.fb-outro-on .fb-runline small{ display:block; }
+.fb-outro-on .card .btnrow{ flex-wrap:wrap; justify-content:center; }
+.fb-outro-on .card .btnrow > .fb-runline{ flex:1 0 100%; margin:0 0 4px; text-align:center; }
+
+/* ---- 6. the skip affordance ----------------------------------------- */
+.fb-outro-skip{ display:block; margin:7px 0 0; font-size:10.5px; letter-spacing:.08em;
+  text-transform:uppercase; font-weight:700; color:inherit;
+  text-align:center; opacity:.55; }
+.fb-outro-counting .fb-outro-skip{ opacity:.8 }
+.fb-outro:not(.fb-outro-counting) .fb-outro-skip{ display:none }
+
+/* ---- 7. the win flourish. Pure CSS, no canvas, no library: eight sparks on
+   a one-shot animation, removed from the DOM when it ends. Decorative only —
+   aria-hidden, pointer-events:none, and it never covers the retry button. */
+.fb-outro-sparks{ position:absolute; inset:0; overflow:hidden; pointer-events:none;
+  border-radius:inherit; }
+.fb-outro-sparks i{ position:absolute; top:-8px; width:7px; height:11px; border-radius:2px;
+  opacity:0; animation:fb-outro-fall 1.5s linear both; }
+@keyframes fb-outro-fall{
+  0%{ opacity:0; transform:translateY(-10px) rotate(0) }
+  12%{ opacity:1 }
+  100%{ opacity:0; transform:translateY(420px) rotate(540deg) } }
+
+/* the card becomes the positioning context for the sparks and sits above the
+   overlay's own backdrop blur */
+.fb-outro-on .card{ position:relative; }
+
+/* ---- 8. laptop / tablet / phone ------------------------------------- */
+/* a landscape phone gives the card ~360px of height: drop the hero, tighten
+   every row, shrink the total. The ending still has all four beats. */
+@media (max-height:560px){
+  /* measured on a 740x360 landscape phone: the full card came to 378px against
+     360px of viewport, which clipped the verdict off the top. These reclaim
+     ~30px of chrome so the whole ending, including the replay button, fits
+     without scrolling. */
+  .fb-outro-on .card{ padding:14px 18px }
+  .fb-outro{ margin:5px 0 0 }
+  .fb-outro-kicker{ font-size:9.5px; margin:0 }
+  .fb-outro-hero{ display:none }
+  .fb-outro-tally li{ font-size:11.5px; padding:1px 0 }
+  .fb-outro-tally li b{ font-size:12.5px }
+  .fb-outro-total{ margin:5px 0 0; padding-top:5px }
+  .fb-outro-total b{ font-size:23px }
+  .fb-outro-rank{ margin:6px 0 0 }
+  .fb-outro-note{ font-size:10.5px }
+  .fb-outro-sparks{ display:none }
+}
+/* a very narrow phone: let a long row wrap instead of squeezing the number */
+@media (max-width:360px){
+  .fb-outro-tally li{ font-size:11.5px }
+  .fb-outro-total b{ font-size:26px }
+}
+
+/* ---- 9. INK IS INHERITED, NOT ASSUMED ------------------------------
+   Every colour above is `inherit` plus an opacity, and every rule and track is
+   a neutral grey with alpha. There is no dark-mode block, because there is
+   nothing left for one to correct.
+
+   This replaced a block that redeclared each node for `prefers-color-scheme:
+   dark`, which quietly assumed every run-over card is LIGHT in light mode. Two
+   are not: Bot Merge's is `--card`/`--ink`, and Bot Pong's is dark in both
+   schemes. A real match played to 11-1 on Bot Pong rendered the whole tally in
+   near-black on near-black — present in the DOM, read back correctly by the
+   gate, and invisible to the player. Inheriting is not a tidier way to write
+   the same thing; it is the only version that cannot be wrong about a surface
+   it has never seen. */
+
+/* ---- 10. reduced motion: no animation, and the ending still reads ----
+   Every animated property above has its resting state asserted here, because
+   `animation:none` on a `both`-filled keyframe leaves the element at its FROM
+   value — which for a tally row is opacity:0. Turning motion off must not turn
+   the ending screen off. */
+@media (prefers-reduced-motion:reduce){
+  .fb-outro-tally li{ opacity:1; transform:none; animation:none }
+  .fb-outro-hero{ animation:none; transform:none }
+  .fb-outro-bar span{ transition:none }
+  .fb-outro-sparks{ display:none }
+}
+</style>
+</head>
+<body>
+  <div id="testbar">TEST MODE — no live surface</div>
+
+  <header>
+    <img id="pfp" alt="" src="https://arweave.net/_cPSCheRvzVBlZK7QwM-3nXtteMdBbUn-zJhbGRlMmo/106.png">
+    <!--fb:pongtitle--><a class="fb-mark" href="https://games.finnstergram.com" aria-label="FinnBots — more games"><svg class="fb-bot" viewBox="0 0 28 28" aria-hidden="true" focusable="false"><path d="M14 5.4V3.4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="14" cy="2" r="1.85" fill="var(--fb-amber)"/><rect x="1" y="11" width="2.6" height="6" rx="1.3" fill="currentColor"/><rect x="24.4" y="11" width="2.6" height="6" rx="1.3" fill="currentColor"/><rect x="3.6" y="5" width="20.8" height="18" rx="5.5" fill="currentColor"/><rect x="6.6" y="8.6" width="14.8" height="9.4" rx="2.6" fill="var(--fb-screen)"/><circle cx="10.7" cy="13.3" r="1.9" fill="var(--fb-amber)"/><circle cx="17.3" cy="13.3" r="1.9" fill="var(--fb-amber)"/></svg><span class="fb-word">FINN<i>BOTS</i></span></a><!--/fb-->
+    <div class="title">Bot <b>Pong</b></div>
+    <div class="spacer"></div>
+    <div class="who">You vs Cam</div>
+  </header>
+
+  <div class="facts">
+    <div><div class="k">You</div><div class="v you" id="scoreYou">0</div></div>
+    <div><div class="k">First to</div><div class="v" id="target">11</div></div>
+    <div><div class="k">Cam</div><div class="v" id="scoreCpu">0</div></div>
+  </div>
+
+  <div class="stage">
+    <canvas id="court"></canvas>
+    <div class="modal" id="overOverlay">
+      <!-- the START card, also used for PAUSE -->
+      <div class="card" id="startCard">
+        <h1 id="cardTitle">Bot Pong</h1>
+        <p id="cardText">Get the ball past Cam. First to 11 wins.</p>
+        <div class="rules">
+          Drag to move your paddle — the ball speeds up every rally.
+        </div>
+        <button class="btn" id="startBtn">Play</button>
+      </div>
+      <!-- the MATCH-OVER card, in the chassis shape the shared ending screen
+           binds to: #overTitle, a VISIBLE #oScore, a stat line, #retryBtn -->
+      <div class="card" id="overCard" hidden>
+        <h1 id="overTitle">MATCH OVER</h1>
+        <div class="big">POINTS <span id="oScore">0</span></div>
+        <p>You <b id="oYou">0</b> · Cam <b id="oCam">0</b> · Best rally <b id="oRally">0</b></p>
+        <button class="btn" id="retryBtn">Play again</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <span class="keyonly">Move: <kbd>↑</kbd> <kbd>↓</kbd> &nbsp;·&nbsp; Pause: <kbd>P</kbd></span>
+    <span class="touchonly">Drag anywhere on the court to move your paddle</span>
+  </div>
+
+  <footer>
+    <a href="https://magiceden.io/marketplace/finnbot" target="_blank" rel="noopener">Buy a Bot</a>
+    <a href="https://games.finnstergram.com" target="_blank" rel="noopener">More games</a>
+  </footer>
+
+<script>
+/* ---- Bot Pong — Free only, wallet-dead (no wallet code, no memo, no money path). ---- */
+/* ---- HEADLESS: the sim must run with no DOM at all -----------------------
+   Bot Pong touched `document` at module scope, so requiring this engine threw
+   `document is not defined` and every gate that drives a sim — verify-inputs,
+   playtest, skill-ladder — reported a loud SKIP. Its controls had never been
+   examined by anything. This has to be the FIRST thing in the file: the very
+   next line already reaches for document.body. */
+const HEADLESS = (typeof document === 'undefined');
+const $id = id => HEADLESS ? null : document.getElementById(id);
+
+const TEST_MODE = false;
+if (TEST_MODE && !HEADLESS) document.body.classList.add('test');
+
+/* ---- Tunables (data-driven: change a value, not the code) ---- */
+const CFG = {
+  winScore:    11,
+  paddleH:     0.16,   // fraction of court height
+  paddleW:     12,     // px
+  ballR:       13,     // px — the ball IS Bot #106 (Cam), sized to read clearly
+  ballSpeed0:  6.6,    // starting px/frame at 60fps-equiv
+  ballSpeedUp: 1.20,   // multiply on each paddle hit — a point resolves in ~6-10
+  ballSpeedMax:34,     // hits instead of ~26, so a rally always goes somewhere
+  minAng:      0.34,   // rad — a dead-centre hit must NOT return a flat ball
+  cpuSpeedF:   0.015,  // CPU paddle top speed, fraction of court height per frame
+  cpuErr:      0.60,   // CPU aim error (paddle heights) — why it misses
+  padSpeedF:   0.032,  // your paddle CHASES the pointer at this top speed
+  accent:      '#f2a03d',
+};
+
+const cv = $id('court');
+const ctx = HEADLESS ? null : cv.getContext('2d');
+const modal = $id('overOverlay');
+const startBtn = $id('startBtn');
+const cardTitle = $id('cardTitle');
+const cardText = $id('cardText');
+const elYou = $id('scoreYou');
+const elCpu = $id('scoreCpu');
+if (!HEADLESS) $id('target').textContent = CFG.winScore;
+
+/* Cam #106 as the ball, with a filled-disc fallback if the image is blocked */
+const camImg = HEADLESS ? null : new Image();
+let camReady = false;
+if (!HEADLESS){
+  camImg.crossOrigin = 'anonymous';
+  camImg.onload = () => camReady = true;
+  camImg.onerror = () => camReady = false;
+}
+if (!HEADLESS) camImg.src = 'assets/hero/bot-106.png';   /* the LOCAL keyed Bot 106: transparent, no runtime Arweave fetch */
+
+let W = 0, H = 0, DPR = 1;
+function resize(){
+  /* a court with no canvas still has a size — without it W and H stay 0 and
+     every paddle, speed and bounce in the sim comes out NaN */
+  if (HEADLESS){ W = 640; H = 360; DPR = 1; return; }
+  const r = cv.getBoundingClientRect();
+  DPR = Math.min(window.devicePixelRatio || 1, 2);
+  W = Math.max(200, r.width); H = Math.max(200, r.height);
+  cv.width = Math.round(W * DPR); cv.height = Math.round(H * DPR);
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+if (!HEADLESS) window.addEventListener('resize', resize);
+
+/* ---- State ---- */
+let G = {
+  state: 'ready', phase: 'play',   // `phase` is the chassis contract's field            // 'ready' | 'playing' | 'paused' | 'over'
+  you: 0, cpu: 0,
+  py: 0, cy: 0,              // paddle centres (px)
+  pyWant: 0,                 // where your pointer/keys want the paddle
+  cpuErr: 0,                 // CPU's aim error for the current ball
+  bx: 0, by: 0, vx: 0, vy: 0,
+  rally: 0, bestRally: 0,    // paddle hits in the current point, and the match's longest
+  /* THE CONTROLS, on the state. They used to be a module-level `keys` object
+     nudging G.pyWant from its own requestAnimationFrame loop — outside the
+     fixed-timestep sim and unreachable by any driver. The nudge now happens
+     inside step(), so it is deterministic as well as drivable. */
+  inUp: false, inDown: false,
+};
+
+function paddlePx(){ return H * CFG.paddleH; }
+
+/* Where the ball will cross a given x, bouncing off the top and bottom walls. */
+function predictY(targetX){
+  let y = G.by, vy = G.vy, x = G.bx, vx = G.vx;
+  if (vx === 0) return y;
+  for (let i = 0; i < 4000 && (vx > 0 ? x < targetX : x > targetX); i++){
+    x += vx; y += vy;
+    if (y < CFG.ballR){ y = CFG.ballR; vy = Math.abs(vy); }
+    if (y > H - CFG.ballR){ y = H - CFG.ballR; vy = -Math.abs(vy); }
+  }
+  return y;
+}
+
+function serve(dir){
+  G.bx = W/2; G.by = H/2;
+  const ang = (Math.random()*0.5 - 0.25); // shallow angle
+  const sp = CFG.ballSpeed0;
+  G.vx = dir * sp * Math.cos(ang);
+  G.vy = sp * Math.sin(ang) * (Math.random()<0.5?1:-1);
+}
+
+function newGame(){
+  resize();
+  G.you = 0; G.cpu = 0;
+  G.py = H/2; G.cy = H/2; G.pyWant = H/2;
+  updateScore();
+  serve(Math.random()<0.5 ? -1 : 1);
+  G.rally = 0; G.bestRally = 0;
+  setState('playing');
+  hideCards();
+}
+
+function updateScore(){ if (HEADLESS) return; elYou.textContent = G.you; elCpu.textContent = G.cpu; }
+
+function point(who){
+  if (who === 'you') G.you++; else G.cpu++;
+  G.rally = 0;
+  updateScore();
+  if (G.you >= CFG.winScore || G.cpu >= CFG.winScore){ return endGame(); }
+  G.py = clamp(G.py, paddlePx()/2, H - paddlePx()/2);
+  G.pyWant = clamp(G.pyWant, paddlePx()/2, H - paddlePx()/2);
+  serve(who === 'you' ? -1 : 1); // serve toward the loser
+}
+
+/* ---- the three states of this one overlay (2026-10-03) -------------------
+   Bot Pong's single card used to be its start screen, its pause screen AND its
+   match-over screen, with #startBtn relabelled Play / Resume / Play again and
+   #oScore hidden. The shared ending screen correctly declined to fire on it,
+   because "the overlay became visible" is not "the match ended" when the same
+   card is also the start screen. Two cards now, and ONE function opens each, so
+   the states cannot drift apart. */
+function showStartCard(){
+  if (HEADLESS) return;
+  document.getElementById('overCard').hidden = true;
+  document.getElementById('startCard').hidden = false;
+  modal.classList.remove('show');   // intro/pause, not a result: never bank a best here
+  modal.hidden = false;
+}
+function hideCards(){
+  if (HEADLESS) return;
+  modal.hidden = true; modal.classList.remove('show');
+  document.getElementById('overCard').hidden = true;
+  document.getElementById('startCard').hidden = false;
+}
+function endGame(){
+  setState('over');                    // the match result is SIM, the card is DOM
+  const win = G.you > G.cpu;
+  if (HEADLESS) return;
+  document.getElementById('overTitle').textContent = win ? 'MATCH WON' : 'CAM TAKES IT';
+  document.getElementById('overTitle').className = win ? 'you' : 'cpu';
+  /* #oScore is STATIC markup and carries YOUR points ALONE: the shared
+     stickiness and ending layers bind once at page load and parse its
+     textContent as a number, so an id created later inside an innerHTML string
+     does not exist when they look, and "11 — 7" would not parse. */
+  document.getElementById('oScore').textContent = G.you;
+  document.getElementById('oYou').textContent = G.you;
+  document.getElementById('oCam').textContent = G.cpu;
+  document.getElementById('oRally').textContent = G.bestRally;
+  document.getElementById('startCard').hidden = true;
+  document.getElementById('overCard').hidden = false;
+  modal.hidden = false;
+  modal.classList.add('show');   // the class the shared stickiness + outro layers watch
+}
+
+const clamp = (v,a,b)=> v<a?a : v>b?b : v;
+
+/* ONE place sets the match state, so this game's own `state` and the chassis
+   contract's `phase` cannot drift apart. CLAUDE.md: phase is {play, dead, won}
+   and sub-states live INSIDE play — so 'ready' and 'paused' are still 'play'.
+   Exporting { newRun, stepGame } opted this game into the termination contract,
+   and verify-game drives a no-input run until `phase === 'dead'`; it uses
+   `state`, so the sim ran to the cap and was reported as non-terminating when
+   in fact Cam wins 11-0 in 31 seconds. */
+function setState(v){
+  G.state = v;
+  G.phase = (v === 'over') ? (G.you > G.cpu ? 'won' : 'dead') : 'play';
+}
+
+/* ---- Physics step (fixed timestep) ---- */
+function step(){
+  const ph = paddlePx();
+  /* CPU: predicts where the ball will arrive and moves at a capped speed, so it
+     misses because it cannot get there — not from a sine wobble that a player
+     with prefers-reduced-motion used to have switched off, which made the CPU
+     strictly better for them. */
+  const cpuSpd = H * CFG.cpuSpeedF;
+  if (G.vx > 0 && G.bx > W*0.4){
+    const aim = predictY(W-18-CFG.paddleW-CFG.ballR) + G.cpuErr;
+    G.cy += clamp(aim - G.cy, -cpuSpd, cpuSpd);
+  } else {
+    G.cy += clamp(H/2 - G.cy, -cpuSpd*0.5, cpuSpd*0.5);
+  }
+  G.cy = clamp(G.cy, ph/2, H - ph/2);
+  /* the held controls, applied inside the fixed step so they are deterministic
+     and so a driver can hold one — the keyboard's own rAF loop used to do this
+     outside the sim entirely */
+  if (G.inUp || G.inDown){
+    const nudge = H*0.02;
+    if (G.inUp)   G.pyWant -= nudge;
+    if (G.inDown) G.pyWant += nudge;
+    G.pyWant = clamp(G.pyWant, ph/2, H - ph/2);
+  }
+  /* Your paddle chases the pointer at a top speed instead of teleporting to it,
+     so a cross-court flick can be punished and the match can actually be lost. */
+  const padSpd = H * CFG.padSpeedF;
+  G.py += clamp(G.pyWant - G.py, -padSpd, padSpd);
+  G.py = clamp(G.py, ph/2, H - ph/2);
+
+  // move ball
+  const prevBx = G.bx;
+  G.bx += G.vx; G.by += G.vy;
+
+  // top/bottom walls
+  if (G.by < CFG.ballR){ G.by = CFG.ballR; G.vy = Math.abs(G.vy); }
+  if (G.by > H - CFG.ballR){ G.by = H - CFG.ballR; G.vy = -Math.abs(G.vy); }
+
+  const px = 18, cx = W - 18; // paddle x positions
+  /* SWEPT: did the ball CROSS the paddle face this frame? A per-frame box test
+     lets a fast ball tunnel clean through a 12px paddle, which is what used to
+     decide points once the rally got quick. */
+  const face = px + CFG.paddleW + CFG.ballR;
+  if (G.vx < 0 && prevBx >= face && G.bx <= face &&
+      Math.abs(G.by - G.py) < ph/2 + CFG.ballR){
+    G.bx = face;
+    bounce(G.py, ph, 1);
+  }
+  const cface = cx - CFG.paddleW - CFG.ballR;
+  if (G.vx > 0 && prevBx <= cface && G.bx >= cface &&
+      Math.abs(G.by - G.cy) < ph/2 + CFG.ballR){
+    G.bx = cface;
+    bounce(G.cy, ph, -1);
+  }
+
+  // scoring
+  if (G.bx < -CFG.ballR) point('cpu');
+  else if (G.bx > W + CFG.ballR) point('you');
+}
+
+function bounce(paddleCentre, ph, dir){
+  /* The ending screen's tally needs something a player actually felt, and a
+     paddle-rally match's story is its rallies, not its clock. Counted here
+     because this is the one place a ball is returned by either paddle. */
+  G.rally++; if (G.rally > G.bestRally) G.bestRally = G.rally;
+  const rel = (G.by - paddleCentre) / (ph/2);          // -1..1
+  const speed = Math.min(Math.hypot(G.vx,G.vy) * CFG.ballSpeedUp, CFG.ballSpeedMax);
+  let ang = rel * (Math.PI/3.2);                      // up to ~56°
+  if (Math.abs(ang) < CFG.minAng) ang = (rel >= 0 ? 1 : -1) * CFG.minAng;
+  G.cpuErr = (Math.random()*2 - 1) * paddlePx() * CFG.cpuErr;   // fresh read each hit
+  G.vx = dir * speed * Math.cos(ang);
+  G.vy = speed * Math.sin(ang);
+}
+
+/* ---- Render ---- */
+function draw(){
+  if (HEADLESS) return;
+  ctx.clearRect(0,0,W,H);
+  // court
+  ctx.fillStyle = getCss('--court'); ctx.fillRect(0,0,W,H);
+  // centre net
+  ctx.strokeStyle = getCss('--line'); ctx.lineWidth = 2;
+  ctx.setLineDash([8,10]); ctx.beginPath();
+  ctx.moveTo(W/2,0); ctx.lineTo(W/2,H); ctx.stroke(); ctx.setLineDash([]);
+
+  const ph = paddlePx();
+  // player paddle (accent)
+  ctx.fillStyle = CFG.accent;
+  roundRect(18, G.py-ph/2, CFG.paddleW, ph, 5);
+  // cpu paddle (paper)
+  ctx.fillStyle = getCss('--paper');
+  roundRect(W-18-CFG.paddleW, G.cy-ph/2, CFG.paddleW, ph, 5);
+
+  // ball = Cam #106, or a disc fallback
+  if (camReady){
+    const d = CFG.ballR*2.6;
+    ctx.save(); ctx.beginPath();
+    ctx.arc(G.bx, G.by, d/2, 0, Math.PI*2); ctx.closePath(); ctx.clip();
+    ctx.drawImage(camImg, G.bx-d/2, G.by-d/2, d, d); ctx.restore();
+    ctx.strokeStyle = CFG.accent; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(G.bx,G.by,d/2,0,Math.PI*2); ctx.stroke();
+  } else {
+    ctx.fillStyle = CFG.accent;
+    ctx.beginPath(); ctx.arc(G.bx,G.by,CFG.ballR,0,Math.PI*2); ctx.fill();
+  }
+}
+function roundRect(x,y,w,h,r){
+  ctx.beginPath();
+  ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r);
+  ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); ctx.fill();
+}
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+/* ---- Loop (fixed step, decoupled from refresh rate) ---- */
+let last = 0, acc = 0; const DT = 1000/60;
+function frame(t){
+  if (!last) last = t;
+  acc += Math.min(t - last, 60); last = t;
+  if (G.state === 'playing'){ while (acc >= DT && G.state === 'playing'){ step(); acc -= DT; } }
+  draw();
+  requestAnimationFrame(frame);
+}
+if (!HEADLESS) requestAnimationFrame(frame);
+
+/* ================= HEADLESS CONTRACT =======================================
+   { CFG, newRun, stepGame } so the factory's gates can drive the match with no
+   DOM: verify-inputs holds a control and asks whether the world moved,
+   playtest and skill-ladder drive whole runs. The sim already lived entirely on
+   G; all this does is let a caller own one and advance it a tick at a time.
+   ======================================================================== */
+function newRun(){
+  G = { state:'ready', phase:'play', you:0, cpu:0, py:0, cy:0, pyWant:0, cpuErr:0,
+        bx:0, by:0, vx:0, vy:0, rally:0, bestRally:0, inUp:false, inDown:false };
+  newGame();                       // sizes the court, serves, sets state 'playing'
+  return G;
+}
+function stepGame(s, dt){
+  if (s !== G) G = s;              // the caller owns the run; adopt it
+  const ev = {};
+  if (G.state !== 'playing') return ev;
+  const you0 = G.you, cpu0 = G.cpu;
+  step();
+  if (G.you !== you0) ev.point = 'you';
+  if (G.cpu !== cpu0) ev.point = 'cpu';
+  if (G.state === 'over') ev.over = true;
+  return ev;
+}
+if (HEADLESS) module.exports = { CFG, newRun, stepGame };
+
+/* ---- Input: keyboard (desktop) + drag (mobile) ---- */
+const keys = {};
+if (!HEADLESS) addEventListener('keydown', e=>{
+  if (['ArrowUp','ArrowDown'].includes(e.key)) e.preventDefault();
+  if (e.key === 'p' || e.key === 'P') togglePause();
+  keys[e.key] = true;
+});
+if (!HEADLESS) addEventListener('keyup', e=> keys[e.key] = false);
+function keyLoop(){
+  /* mirror the held keys onto the run state and nothing else — step() applies
+     them, so the paddle moves at the sim's rate rather than the display's */
+  G.inUp   = !!keys['ArrowUp'];
+  G.inDown = !!keys['ArrowDown'];
+  requestAnimationFrame(keyLoop);
+}
+if (!HEADLESS) requestAnimationFrame(keyLoop);
+
+function pointerMove(clientY){
+  const r = cv.getBoundingClientRect();
+  G.pyWant = clamp(clientY - r.top, paddlePx()/2, H - paddlePx()/2);
+}
+if (!HEADLESS){
+  cv.addEventListener('pointerdown', e=>{ cv.setPointerCapture(e.pointerId); pointerMove(e.clientY); });
+  cv.addEventListener('pointermove', e=>{ if (e.pressure>0 || e.buttons>0 || e.pointerType==='touch') pointerMove(e.clientY); });
+}
+
+function togglePause(){
+  if (G.state === 'playing'){ setState('paused'); cardTitle.textContent='Paused';
+    cardTitle.className=''; cardText.textContent=''; document.querySelector('.rules').textContent='';
+    startBtn.textContent='Resume'; showStartCard(); }
+  else if (G.state === 'paused'){ setState('playing'); hideCards(); last=0; }
+}
+
+if (!HEADLESS) startBtn.addEventListener('click', ()=>{
+  if (G.state === 'paused'){ setState('playing'); hideCards(); last=0; return; }
+  newGame(); last=0;
+});
+/* #retryBtn is the id the shared stickiness layer clicks for one-key replay,
+   so the match-over card's button must start a new match. */
+if (!HEADLESS) $id('retryBtn').addEventListener('click', ()=>{ newGame(); last=0; });
+
+resize();
+</script>
+<script id="fb-sticky">
+/* ==========================================================================
+   FinnBots STICKINESS LAYER — the reason a player takes one more run.
+   Founder rule, 2026-09-25: "provide a UI/UX that will support stickiness
+   with players."
+
+   SOURCE OF TRUTH. Injected by apply-device.js as <script id="fb-sticky">
+   just before </body>. It is deliberately tiny and entirely passive:
+
+     - it NEVER touches the engine, the wallet layer, the network or a wallet
+     - it reads the score the game ALREADY prints into #oScore
+     - it stores one number per game in localStorage, and nothing else
+
+   What it adds, and why each one earns its place:
+     1. A personal best you can always see.  A score with nothing to beat is a
+        number; a score next to your best is a challenge.
+     2. A run-over line that says exactly how close you came ("1,240 short" /
+        "NEW BEST +900").  The gap is what makes the next run feel winnable.
+     3. A session run counter, so a streak is visible while it is happening.
+     4. Enter / Space / Return restarts from the run-over card.  The single
+        biggest drop-off in an arcade loop is the pause between runs — the
+        fastest possible replay is the strongest retention feature there is.
+   ========================================================================== */
+(function(){
+  try{
+    var NS = 'fb:' + (location.hostname.split('.')[0] || 'game') + ':';
+    var $  = function(id){ return document.getElementById(id); };
+    var read = function(k,d){ try{ var v=localStorage.getItem(NS+k); return v==null?d:(JSON.parse(v)); }catch(e){ return d; } };
+    var save = function(k,v){ try{ localStorage.setItem(NS+k, JSON.stringify(v)); }catch(e){} };
+    var fmt  = function(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+    var num  = function(t){ var n=parseInt(String(t||'').replace(/[^0-9]/g,''),10); return isFinite(n)?n:0; };
+
+    var best = num(read('best', 0)), runs = 0;
+
+    /* ---- 1. the chip, in the topbar beside the title ---- */
+    var chip = document.createElement('span');
+    chip.className = 'fb-best';
+    function paintChip(isNew){
+      chip.innerHTML = '<i>BEST</i> <b>' + fmt(best) + '</b>';
+      chip.classList.toggle('is-new', !!isNew);
+      chip.hidden = !best;
+    }
+    paintChip(false);
+    var title = document.querySelector('.topbar .title, .topbar h1, header .title');
+    if(title && title.parentNode) title.parentNode.insertBefore(chip, title.nextSibling);
+
+    /* ---- 2. the run-over line ---- */
+    var over = $('overOverlay'), card = $('overCard'), scoreEl = $('oScore');
+    if(!over || !card || !scoreEl) return;       // not a chassis run-over card: do nothing
+    var line = document.createElement('p');
+    line.className = 'fb-runline';
+    var retry = $('retryBtn');
+    if(retry && retry.parentNode) retry.parentNode.insertBefore(line, retry);
+    else card.appendChild(line);
+
+    var shown = false;
+    function onShow(){
+      var score = num(scoreEl.textContent);
+      runs++;
+      var isNew = score > best, gap = best - score;
+      if(isNew){
+        var by = score - best;
+        best = score; save('best', best);
+        line.innerHTML = '<span class="go">NEW BEST · +' + fmt(by) + '</span>' +
+                         '<small>run ' + runs + ' this session</small>';
+      } else if(best > 0){
+        line.innerHTML = '<span class="gap">' + fmt(gap) + ' short of your best</span>' +
+                         '<small>best ' + fmt(best) + ' · run ' + runs + ' this session</small>';
+      } else {
+        best = score; save('best', best);
+        line.innerHTML = '<span class="go">First run banked</span>' +
+                         '<small>beat ' + fmt(best) + ' next time</small>';
+      }
+      paintChip(isNew);
+    }
+
+    new MutationObserver(function(){
+      var on = over.classList.contains('show');
+      if(on && !shown){ shown = true; onShow(); }
+      else if(!on){ shown = false; }
+    }).observe(over, { attributes:true, attributeFilter:['class'] });
+
+    /* ---- 3. one-key replay, and the focus trap it exposed ------------------
+       Closing a dialog returns focus to the button that opened it — correct
+       accessibility, and the chassis does it. But a focused <button> then eats
+       ENTER and SPACE, so mid-game those keys re-open HOW TO PLAY instead of
+       playing: Space IS the fire key in several games, and this layer had just
+       taught players to press Enter between runs, which made a latent bug easy
+       to hit (Founder, 2026-09-25, seen on a round clear).
+
+       So: Enter/Space replay when the run-over card is up; they are left alone
+       while ANY other dialog is open, because its buttons must still work; and
+       otherwise the focused control is blurred and the key swallowed, so game
+       keys can never operate the chrome. Capture phase, because this has to run
+       before the button's own activation. */
+    var anyDialog = function(){ return !!document.querySelector('.overlay.show, .sheet.show'); };
+    addEventListener('keydown', function(e){
+      if(e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+      if(over.classList.contains('show')){
+        e.preventDefault();
+        if(retry) retry.click();
+        return;
+      }
+      if(anyDialog()) return;                       // another dialog owns the keyboard
+      var a = document.activeElement;
+      if(a && a !== document.body && /^(BUTTON|A|SUMMARY)$/.test(a.tagName)){
+        a.blur();
+        e.preventDefault();
+      }
+    }, true);
+  }catch(e){ /* stickiness must never break a game */ }
+})();
+</script>
+<script id="fb-outro">
+/* ==========================================================================
+   FinnBots OUTRO LAYER — the ending screen.
+   Founder, 2026-10-02, verbatim: "there need to be a cool ending screen to
+   games not just they end or game over".
+
+   SOURCE OF TRUTH. Injected by apply-outro.js as <script id="fb-outro">
+   just before </body>, which is AFTER the engine and after the stickiness and
+   seed layers, so everything it decorates already exists when it binds.
+
+   WHAT WAS WRONG. The chassis run-over card is a receipt: "RUN OVER", a score,
+   a time, a retry button — the same card whether the player cleared the final
+   round or walked into the first enemy. The number arrives instantly, which
+   makes it information rather than a reward, and it sits beside nothing, so a
+   great run and a terrible one feel identical. An arcade ending has four beats
+   and we shipped none of them.
+
+   THE FOUR BEATS, and why each one earns its place:
+
+     1. VERDICT — winning must not look like dying. A cleared game gets a
+        different kicker, a lit hero and a flourish; a loss gets a warm,
+        non-punitive close. Free players are children (Founder, 2026-09-30):
+        losing is never made to sting, and nothing here sells anything.
+
+     2. TALLY — the score COUNTS UP, and the per-game stats the card already
+        prints become itemised rows that ratchet in above it. The count-up is
+        the oldest reward animation in the arcade and the single biggest thing
+        this card was missing. It is always skippable with a tap or a key: a
+        ceremony you cannot cut short is a toll, not a reward.
+
+     3. RANK — where does this run actually stand? The board CSV the scanner
+        publishes is served from the same origin as the game, so the ending can
+        read it and say "that would place you 7th today", with a rank title
+        earned against the REAL distribution rather than hand-set thresholds
+        that would mean something different in every game. 25 OIL buys a
+        leaderboard spot; this is where the purchase is finally delivered. Free
+        players see the same thing for nothing — the paid layer's output
+        flowing back to them as content, per MONETISATION-BRIEF.md.
+
+     4. HOOK — the stickiness layer's "1,240 short of your best" line and its
+        one-key replay stay exactly where they are. This layer frames them.
+
+   HOW IT IS BUILT, and the traps that shaped it:
+
+     - ADDITIVE AND PASSIVE. It never touches the engine, the wallet layer, the
+       network beyond the one same-origin CSV, or a wallet. It reads the DOM the
+       game already wrote.
+     - IT NEVER RETYPES THE CARD'S OWN NUMBERS. #oScore keeps its final text,
+       because the stickiness layer, the score memo and two gates read it. We
+       hide the plain readout with a clip rect and draw our own beside it.
+     - IT FIRES ON A RUN END, NEVER ON A START SCREEN. Bot Pong and Bot Merge
+       reuse #overOverlay/#overCard as their START card, so "the overlay became
+       visible" is not "the run ended". The guard is structural, not a list of
+       game names: a card that holds a visible control whose id starts with
+       "start", or whose score element is hidden by attribute, is a start card
+       and is left alone. Those two games therefore get NO ending screen from
+       this layer, which verify-outro.js reports per game as a named gap rather
+       than passing in silence.
+     - VISIBILITY IS DECIDED WITHOUT LAYOUT. Games reveal the overlay three
+       different ways (.show added, .hidden removed, both), so the check is
+       mechanism-agnostic and layout-free, which also lets a gate drive it
+       headlessly.
+     - IT MUST NEVER BREAK A GAME. Everything is inside one try/catch, every
+       animation degrades to its final state under prefers-reduced-motion, and
+       a missing hero image, a missing board or a failed fetch each remove one
+       beat and leave the rest.
+   ========================================================================== */
+(function(){
+  try{
+    var $ = function(id){ return document.getElementById(id); };
+    var overlay = $('overOverlay'), card = $('overCard'), scoreEl = $('oScore');
+    /* HARD dependencies. check-layers.js reads this guard to learn which ids
+       the layer cannot run without, and then checks them in the STATIC markup
+       of every game that carries the layer — so a game where this returns is a
+       FAILED gate, not a quiet no-op. [[installed-is-not-working]] */
+    if(!overlay || !card || !scoreEl) return;
+
+    var titleEl = $('overTitle');
+    var SCRIPT  = document.getElementById('fb-outro');
+    var BOARD   = (SCRIPT && SCRIPT.getAttribute('data-fb-board')) || '';
+    var reduced = false;
+    try{ reduced = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches); }catch(e){}
+
+    var fmt = function(n){ return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ','); };
+    var num = function(t){ var n = parseInt(String(t==null?'':t).replace(/[^0-9-]/g,''),10); return isFinite(n)?n:0; };
+    var has = function(el,c){ return !!(el && el.classList && el.classList.contains(c)); };
+    var attrHidden = function(el){
+      if(!el) return true;
+      if(el.hidden === true) return true;
+      if(el.getAttribute && el.getAttribute('hidden') !== null && el.getAttribute('hidden') !== undefined) return true;
+      return false;
+    };
+
+    /* ---- is the overlay on screen? ------------------------------------
+       Three conventions are in service (.show added, .hidden removed, both),
+       so decide by state rather than by mechanism, and never by layout: a
+       layout-based answer cannot be driven by a gate and is wrong anyway while
+       the overlay is mid-transition. */
+    function visible(el){
+      if(attrHidden(el)) return false;
+      if(has(el,'hidden')) return false;
+      if(has(el,'show')) return true;
+      if(el.style && el.style.display === 'none') return false;
+      /* no class convention on this game: fall back to layout where there is a
+         browser to ask, and to "not on screen" where there is not. */
+      return (typeof el.offsetParent !== 'undefined') ? el.offsetParent !== null : false;
+    }
+
+    /* ---- is this card a START card rather than a run end? --------------
+       Structural, not a list of game names. */
+    function isStartCard(){
+      if(attrHidden(scoreEl)) return true;                 // card is not presenting a score
+      var kids = card.querySelectorAll ? card.querySelectorAll('[id]') : [];
+      for(var i=0;i<kids.length;i++){
+        var id = kids[i].id || '';
+        if(/^start/i.test(id) && !attrHidden(kids[i])) return true;
+      }
+      return false;
+    }
+
+    /* ---- did the player WIN? -------------------------------------------
+       In order of authority: an explicit declaration from the engine, the
+       chassis's own .win class on the card, then the title the game wrote.
+       The vocabulary is OUR words (clear / complete / vault / champion); it
+       never names another game. */
+    function won(){
+      try{ if(window.FB_OUTRO && typeof window.FB_OUTRO.won === 'boolean') return window.FB_OUTRO.won; }catch(e){}
+      if(has(card,'win')) return true;
+      var t = (titleEl && titleEl.textContent || '').toUpperCase();
+      return /\b(CLEAR|CLEARED|COMPLETE|COMPLETED|WIN|WON|VAULT|CHAMPION|PERFECT)\b/.test(t);
+    }
+
+    /* ---- the tally rows ------------------------------------------------
+       Harvested from the stat line the card ALREADY prints, so every game gets
+       its own itemisation with no per-game code: BotFord's "Cave 7 · Beads 148
+       · Time 1:32" becomes three rows, and a game that only prints a time gets
+       one. Two shapes exist in the roster:
+         <p>Cave <b>7</b> · Beads <b>148</b></p>   label before each <b>
+         <p><b>Bay 1 · 0 kills</b></p>             one <b>, labels inside
+       The second is split on the separator and each piece read as
+       "<value> <label>". */
+    function harvest(){
+      var rows = [], ps = card.querySelectorAll ? card.querySelectorAll('p') : [];
+      for(var i=0;i<ps.length;i++){
+        var p = ps[i];
+        if(has(p,'fb-runline')) continue;                  // the stickiness line, not a stat
+        var bs = p.querySelectorAll ? p.querySelectorAll('b') : [];
+        if(!bs.length) continue;
+        var labelled = 0, out = [];
+        for(var j=0;j<bs.length;j++){
+          var b = bs[j], val = (b.textContent||'').trim();
+          if(!val) continue;
+          /* the text immediately before this <b> inside the <p> is its label */
+          var lab = '';
+          var prev = b.previousSibling;
+          while(prev && !lab){
+            if(prev.nodeType === 3) lab = (prev.textContent||'').trim();
+            prev = prev.previousSibling;
+          }
+          lab = lab.replace(/^[·•|,\s]+/,'').replace(/[:·•|,\s]+$/,'');
+          if(lab){ labelled++; out.push([lab, val]); }
+          else {
+            /* no label outside: the <b> carries "Bay 1 · 0 kills" itself */
+            var parts = val.split(/\s*[·•|]\s*/);
+            for(var k=0;k<parts.length;k++){
+              var piece = parts[k].trim(); if(!piece) continue;
+              var m = /^([0-9][0-9,.:]*)\s+(.+)$/.exec(piece) || /^(.+?)\s+([0-9][0-9,.:]*)$/.exec(piece);
+              if(m && /^[0-9]/.test(m[1])) out.push([m[2], m[1]]);
+              else if(m) out.push([m[1], m[2]]);
+              else out.push(['', piece]);
+            }
+          }
+        }
+        if(out.length){ rows = rows.concat(out); p.classList.add('fb-outro-src'); }
+      }
+      return rows;
+    }
+
+    /* ---- the rank the run earned ---------------------------------------
+       This is the beat the whole screen exists for, and it has to say
+       something TRUE in four different worlds — the first version only worked
+       in one of them.
+
+       Measured on the roster the day this layer was written: of eighteen
+       published boards, sixteen were HEADER ONLY and two held a single row.
+       The scanner only began recording rows at all on 2026-10-02
+       ([[the-score-never-reached-the-board]]), so "where do I rank" had no
+       answer on essentially every game, and the first draft of this layer
+       rendered that as a missing panel — a dead beat that looks exactly like a
+       broken one. That is the mistake this factory keeps paying for, so:
+
+         board with 5+ entries  the world placement and a percentile band.
+                                Calibrated per game by the real distribution,
+                                so no threshold is hand-set.
+         board with 1-4         the placement is real and the percentile is
+                                noise, so the placement is shown and the title
+                                comes from the player's OWN ladder.
+         board served, empty    say so plainly, and rank against your own runs.
+                                Stated as a fact, never as a prompt to spend:
+                                free players are children (MONETISATION-BRIEF).
+         no board served        the personal ladder alone.
+
+       The personal ladder is this layer's own small store (the last ten runs,
+       one key, localStorage) — never the stickiness layer's, so neither layer
+       can break the other. A free player with no wallet therefore always has a
+       real ranking to beat, which is the paid layer's content flowing back to
+       them for nothing. */
+    var BANDS = [
+      [0.00, 'FACTORY CHAMPION'],
+      [0.03, 'FACTORY LEGEND'],
+      [0.10, 'TURBO UNIT'],
+      [0.25, 'CHROME BOT'],
+      [0.50, 'BOLT HUNTER'],
+      [1.01, 'SCRAP RUNNER']
+    ];
+    function bandFor(frac){
+      for(var i=0;i<BANDS.length;i++) if(frac <= BANDS[i][0]) return BANDS[i][1];
+      return BANDS[BANDS.length-1][1];
+    }
+    var ord = function(n){
+      return n + (n%10===1&&n%100!==11?'st':n%10===2&&n%100!==12?'nd':n%10===3&&n%100!==13?'rd':'th');
+    };
+
+    /* this layer's own run history */
+    var HKEY = 'fb:' + ((location.hostname||'game').split('.')[0] || 'game') + ':outro:runs';
+    function loadRuns(){
+      try{ var v = JSON.parse(localStorage.getItem(HKEY) || '[]');
+           return (v instanceof Array ? v : []).filter(function(n){ return typeof n === 'number' && isFinite(n); })
+                                               .sort(function(a,b){ return b-a; }); }
+      catch(e){ return []; }
+    }
+    function saveRun(n){
+      try{ var v = loadRuns(); v.push(n); v.sort(function(a,b){ return b-a; });
+           localStorage.setItem(HKEY, JSON.stringify(v.slice(0,10))); }catch(e){}
+    }
+    /* the player's own ladder: title, a note, and how full the bar sits */
+    function personal(score, prior){
+      /* STANDARD COMPETITION RANKING: a place is one plus the number of runs
+         STRICTLY BETTER than this one, so equal scores share a rank. The first
+         version counted every run that this one did not beat, which made a
+         score EQUAL to your best read "2ND BEST RUN" — correct-looking on a
+         game whose scores are all different, and wrong on every game where
+         scores tie or cap. Bot Pong is first to 11: every single win ties at
+         11, so a perfect 11-0 would have been filed as your second-best run,
+         for ever. The world placement below deliberately does NOT do this —
+         tying someone already on the board leaves you behind them, because
+         they got there first. */
+      var better = 0;
+      for(var i=0;i<prior.length;i++) if(prior[i] > score) better++;
+      var place = better + 1;
+      var best = prior.length ? prior[0] : 0;
+      if(!prior.length) return { title:'ROOKIE BOT', note:'First run banked. Everything from here beats it.', frac: 0.5 };
+      if(place === 1){
+        return score > best
+          ? { title:'PERSONAL BEST', note:'Your best run yet — the old one was <b>' + fmt(best) + '</b>.', frac: 1 }
+          : { title:'MATCHED YOUR BEST', note:'Level with your best of <b>' + fmt(best) + '</b>.', frac: 1 };
+      }
+      return { title: ord(place).toUpperCase() + ' BEST RUN',
+               note: 'Your best is <b>' + fmt(best) + '</b> — <b>' + fmt(best - score) + '</b> to go.',
+               frac: best > 0 ? Math.max(0.04, score / best) : 0.5 };
+    }
+
+    /* parse the scanner's CSV. Its schema varies per game by design (BotFord
+       has `beads`, BubbleBot has `pops`), so read the HEADER and take the score
+       column by name — never by position. An empty board is a real, different
+       answer from an unreadable one, so this returns [] and null respectively. */
+    function scoresFrom(text){
+      var lines = String(text||'').trim().split(/\r?\n/);
+      if(!lines.length || !lines[0]) return null;
+      var head = lines[0].split(',').map(function(s){ return s.trim(); });
+      var col = head.indexOf('score_adjusted');
+      if(col < 0) col = head.indexOf('score_raw');
+      if(col < 0) col = head.indexOf('score');
+      if(col < 0) return null;                       // not a board we understand
+      var out = [];
+      for(var i=1;i<lines.length;i++){
+        var cells = lines[i].split(',');
+        if(cells.length <= col) continue;
+        var v = parseInt(String(cells[col]).replace(/[^0-9-]/g,''),10);
+        if(isFinite(v)) out.push(v);
+      }
+      return out.sort(function(a,b){ return b-a; }); // [] = a board with nobody on it
+    }
+
+    /* ---- build the block once, refill it on every run end --------------- */
+    var box = document.createElement('div');
+    box.className = 'fb-outro';
+    box.innerHTML =
+      '<span class="fb-outro-kicker"></span>' +
+      '<img class="fb-outro-hero" alt="" aria-hidden="true" hidden />' +
+      '<ul class="fb-outro-tally"></ul>' +
+      '<div class="fb-outro-total"><i>Final score</i><b>0</b></div>' +
+      '<div class="fb-outro-rank" hidden>' +
+        '<div class="fb-outro-title"><span></span><em></em></div>' +
+        '<div class="fb-outro-bar"><span></span></div>' +
+        '<small class="fb-outro-note"></small>' +
+      '</div>' +
+      '<span class="fb-outro-skip">tap to skip</span>';
+    var q = function(sel){ return box.querySelector(sel); };
+
+    /* Insert ABOVE the stickiness run-line and the buttons, BELOW the title and
+       the (now hidden) plain score — so the card reads top to bottom as
+       verdict, tally, rank, personal best, replay.
+
+       The anchor has to be walked UP to a direct child of the card first. The
+       first version compared `anchor.parentNode === card` and gave up when it
+       was not, which on every game with a .btnrow (BotFord, BOTRUN) is always:
+       the stickiness layer inserts its run-line before #retryBtn, so the line
+       lives INSIDE the button row. The whole ending screen then appended after
+       the buttons and the card read title, best, REPLAY BUTTON, tally, score.
+       It took a screenshot to see it, because order is the one property a
+       DOM-only gate had not been asked for — verify-outro now asserts it. */
+    function place(){
+      var up = function(node){
+        while(node && node.parentNode && node.parentNode !== card) node = node.parentNode;
+        return (node && node.parentNode === card) ? node : null;
+      };
+      /* Directly UNDER THE TITLE, so the card always reads verdict → tally →
+         rank → personal best → replay. Anchoring on the buttons instead put
+         the whole ending screen BELOW anything else the card happened to
+         carry: on Bot Merge the initials box and the device high-score list
+         sat between the title and the tally and broke the ending in half. The
+         chassis's own `.big` and stat line are hidden by this layer, so
+         landing above them changes nothing on the other games. */
+      var title = up(document.getElementById('overTitle')) || up(card.querySelector('h1,h2'));
+      if(title && title.nextSibling) card.insertBefore(box, title.nextSibling);
+      else if(title) card.appendChild(box);
+      else {
+        var anchor = up(card.querySelector('.fb-runline')) ||
+                     up(card.querySelector('.btnrow')) ||
+                     up(document.getElementById('retryBtn')) ||
+                     up(card.querySelector('button'));
+        if(anchor) card.insertBefore(box, anchor);
+        else card.appendChild(box);
+      }
+    }
+    place();
+
+    var hero = q('.fb-outro-hero');
+    /* The hero is the real Bot 106 PNG every game already ships (Founder,
+       2026-09-25). Shown only once the browser confirms it decoded, so a game
+       without the asset simply has no hero rather than a broken image. */
+    try{
+      hero.addEventListener('load', function(){ hero.hidden = false; });
+      hero.addEventListener('error', function(){ hero.hidden = true; });
+      hero.src = 'assets/hero/bot-106.png';
+    }catch(e){}
+
+    /* ---- the count-up ---------------------------------------------------- */
+    var raf = (window.requestAnimationFrame || function(f){ return setTimeout(function(){ f(Date.now()); }, 16); });
+    var timer = null, settle = null, target = 0;
+    function land(){
+      if(timer){ clearTimeout(timer); timer = null; }
+      box.classList.remove('fb-outro-counting');
+      q('.fb-outro-total b').textContent = fmt(target);
+    }
+    function countTo(n){
+      target = n;
+      if(reduced || n <= 0){ land(); return; }
+      box.classList.add('fb-outro-counting');
+      var DUR = Math.min(1400, 420 + Math.log10(Math.max(10,n)) * 220), t0 = Date.now();
+      (function tick(){
+        if(!box.classList.contains('fb-outro-counting')) return;    // skipped
+        var p = Math.min(1, (Date.now() - t0) / DUR);
+        var eased = 1 - Math.pow(1 - p, 3);
+        q('.fb-outro-total b').textContent = fmt(Math.round(n * eased));
+        if(p >= 1){ land(); return; }
+        timer = setTimeout(tick, 32);
+      })();
+    }
+
+    /* ---- the rank beat --------------------------------------------------- */
+    var MODE = '';
+    function paintRank(score){
+      var rank = q('.fb-outro-rank');
+      var prior = loadRuns();                        // BEFORE this run is added
+      saveRun(score);
+      var me = personal(score, prior);
+
+      function paint(title, right, note, frac){
+        rank.hidden = false;
+        q('.fb-outro-title span').textContent = title;
+        q('.fb-outro-title em').textContent = right || '';
+        q('.fb-outro-note').innerHTML = note;
+        var fill = q('.fb-outro-bar span');
+        var pct = Math.max(4, Math.min(100, Math.round(frac * 100)));
+        if(reduced) fill.style.width = pct + '%';
+        else raf(function(){ fill.style.width = pct + '%'; });
+      }
+
+      var done = function(scores){
+        if(scores && scores.length >= 5){
+          var beat = 0;
+          for(var i=0;i<scores.length;i++){ if(score > scores[i]) break; beat++; }
+          var place = beat + 1, total = scores.length + 1, frac = (place - 1) / total;
+          MODE = 'world';
+          paint(bandFor(frac), 'top ' + Math.max(1, Math.round(frac*100)) + '%',
+                place === 1 ? 'That is the <b>best run on the board</b>.'
+                            : 'That run would place <b>' + ord(place) + '</b> of ' + total + ' on the board.',
+                1 - frac);
+        } else if(scores && scores.length){
+          var b2 = 0;
+          for(var j=0;j<scores.length;j++){ if(score > scores[j]) break; b2++; }
+          MODE = 'thin';
+          paint(me.title, '', 'That run would place <b>' + ord(b2 + 1) + '</b> of ' +
+                (scores.length + 1) + ' on the board. ' + me.note, me.frac);
+        } else if(scores){
+          /* a board is published and nobody is on it. Say it plainly: a fact,
+             with no call to action — this screen is seen by children. */
+          MODE = 'empty';
+          paint(me.title, '', 'Nobody has banked a score on this board yet. ' + me.note, me.frac);
+        } else {
+          MODE = 'personal';
+          paint(me.title, '', me.note, me.frac);
+        }
+      };
+
+      if(!BOARD){ done(null); return; }
+      try{
+        fetch(BOARD, { cache:'no-store' })
+          .then(function(r){ return r.ok ? r.text() : null; })
+          .then(function(t){ done(t == null ? null : scoresFrom(t)); })
+          .catch(function(){ done(null); });
+      }catch(e){ done(null); }
+    }
+
+    /* ---- the win flourish ------------------------------------------------ */
+    function sparks(){
+      if(reduced) return;
+      var hold = document.createElement('div');
+      hold.className = 'fb-outro-sparks'; hold.setAttribute('aria-hidden','true');
+      var cols = ['#f2a03d','#ffd9a0','#9be7d0','#fff'];
+      for(var i=0;i<10;i++){
+        var s = document.createElement('i');
+        s.style.left = (4 + i*10 + (i%3)*3) + '%';
+        s.style.background = cols[i % cols.length];
+        s.style.animationDelay = (i * 55) + 'ms';
+        hold.appendChild(s);
+      }
+      card.appendChild(hold);
+      setTimeout(function(){ try{ hold.remove ? hold.remove() : hold.parentNode.removeChild(hold); }catch(e){} }, 2200);
+    }
+
+    /* ---- run it ----------------------------------------------------------- */
+    function show(){
+      /* THE CARD MAY HAVE BEEN REBUILT. BOTRUN composes its run-over card at
+         run end with `overCard.innerHTML = '<h2 id="overTitle">TIME UP</h2>…'`
+         and THEN reveals it, which destroys this layer's block and leaves the
+         nodes we cached pointing at detached elements. The Founder's screenshot
+         was the result: a bare "TIME UP" and a retry button, with no score at
+         all — because our tally was gone AND our CSS was still hiding the
+         card's own `.big` readout. Worse than before the layer existed.
+         So: re-resolve what we read, and re-attach before we render. */
+      scoreEl = $('oScore')    || scoreEl;
+      titleEl = $('overTitle') || titleEl;
+      if(box.parentNode !== card) place();
+
+      var score = num(scoreEl.textContent), win = won();
+      /* and only now may the card's own score be hidden — this class is
+         exactly "make broken look different from working", so the layer must
+         never suppress what the game already shows unless its replacement is
+         really on screen. */
+      if(box.parentNode === card) document.body.classList.add('fb-outro-on');
+      box.classList.remove('fb-outro-win','fb-outro-end');
+      box.classList.add(win ? 'fb-outro-win' : 'fb-outro-end');
+      q('.fb-outro-kicker').textContent = win ? 'Shift complete · Bot 106 made it out'
+                                              : 'Shift ended · Bot 106 powers down';
+      var rows = harvest(), ul = q('.fb-outro-tally');
+      ul.innerHTML = '';
+      for(var i=0;i<rows.length;i++){
+        var li = document.createElement('li');
+        li.innerHTML = '<i></i><b></b>';
+        li.firstChild.textContent = rows[i][0];
+        li.lastChild.textContent  = rows[i][1];
+        li.style.animationDelay = (reduced ? 0 : 60 + i*85) + 'ms';
+        ul.appendChild(li);
+      }
+      countTo(score);
+      paintRank(score);
+      if(win) sparks();
+      box.hidden = false;
+      /* The card grew: a landscape phone may now need to scroll to the retry
+         button, and the device layer cannot know that. Nudge it into view. */
+      settle = setTimeout(function(){
+        try{ var b = document.getElementById('retryBtn') || card.querySelector('button');
+             if(b && b.scrollIntoView) b.scrollIntoView({ block:'nearest' }); }catch(e){}
+      }, reduced ? 0 : 1500);
+    }
+
+    function hide(){
+      box.hidden = true;
+      document.body.classList.remove('fb-outro-on');
+      if(settle){ clearTimeout(settle); settle = null; }
+      land();
+    }
+    box.hidden = true;
+
+    /* skipping the ceremony: any tap or key lands the tally at once */
+    var skip = function(){ if(box.classList.contains('fb-outro-counting')) land(); };
+    try{
+      box.addEventListener('click', skip);
+      card.addEventListener('click', skip);
+      addEventListener('keydown', skip, true);
+    }catch(e){}
+
+    /* The overlay's reveal is a class or attribute change on the overlay (and on
+       mrbot, on the card). Watch both, and re-ask the question rather than
+       trusting which class moved. */
+    var on = false;
+    function evaluate(){
+      var live = visible(overlay) && !attrHidden(card) && !isStartCard();
+      if(live && !on){ on = true; show(); }
+      else if(!live && on){ on = false; hide(); }
+    }
+    try{
+      var mo = new MutationObserver(evaluate);
+      mo.observe(overlay, { attributes:true, attributeFilter:['class','style','hidden'] });
+      mo.observe(card,    { attributes:true, attributeFilter:['class','style','hidden'] });
+      /* A game that rebuilds the card AFTER revealing it would tear the ending
+         screen out from under a player who is looking at it. Watch the card's
+         own children and put it back. Re-inserting fires this observer again,
+         and the guard below makes that pass a no-op, so it cannot loop. */
+      new MutationObserver(function(){
+        if(on && box.parentNode !== card){ place(); show(); }
+      }).observe(card, { childList:true });
+    }catch(e){}
+    /* The chassis writes the score and THEN adds .show, so the observer is
+       enough; this one call covers a game that was already showing the card
+       when the layer bound (a reload onto a finished run). */
+    evaluate();
+
+    /* exposed for verify-outro.js: a gate must be able to ask the layer what it
+       did, rather than infer it from pixels. Reading it changes nothing. */
+    window.FB_OUTRO_STATE = function(){
+      return { live:on,
+               /* ON SCREEN, not merely built. verify-outro's own self-test
+                  caught this gate passing a layer that assembled the entire
+                  ending screen and left it hidden — the same shape as a draw
+                  path that runs and paints nothing. */
+               visible: !box.hidden && box.parentNode === card,
+               won:box.classList.contains('fb-outro-win'),
+               total:q('.fb-outro-total b').textContent,
+               rows:box.querySelectorAll('.fb-outro-tally li').length,
+               rank:!q('.fb-outro-rank').hidden, mode:MODE,
+               rankTitle:q('.fb-outro-title span').textContent,
+               bar:(q('.fb-outro-bar span').style.width||''),
+               counting:box.classList.contains('fb-outro-counting') };
+    };
+  }catch(e){ /* an ending screen must never break a game */ }
+})();
+</script>
+</body>
+</html>
